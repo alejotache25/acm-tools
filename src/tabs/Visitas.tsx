@@ -1,0 +1,151 @@
+import { useState, useEffect } from 'react';
+import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { sendWebhook } from '../lib/webhook';
+import type { Visita } from '../types';
+
+const today = () => new Date().toISOString().split('T')[0];
+const monthStart = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1).toISOString().split('T')[0]; };
+const monthEnd   = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().split('T')[0]; };
+
+const TIPOS_VISITA = [
+  'CONTROL DE CALIDAD INSTALACIONES',
+  'CONTROL DE CALIDAD MANTENIMIENTOS',
+];
+
+const initForm = () => ({
+  fecha: today(), inspeccion: 'X PERICH', ot: '',
+  tipo_visita: TIPOS_VISITA[0], ok_visita: 'OK',
+});
+
+export default function Visitas({ operario }: { operario: string }) {
+  const { user } = useAuth();
+  const [form, setForm] = useState(initForm());
+  const [rows, setRows] = useState<Visita[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('visitas').select('*')
+      .eq('operario', operario).gte('fecha', monthStart()).lte('fecha', monthEnd())
+      .order('fecha', { ascending: false });
+    setRows(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [operario]);
+
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    const payload = {
+      fecha: form.fecha, operario, inspeccion: form.inspeccion,
+      ot: form.ot ? Number(form.ot) : null, tipo_visita: form.tipo_visita,
+      ok_visita: form.ok_visita, jefe_id: user.id, sync_pending: false,
+    };
+    const { data: inserted } = await supabase.from('visitas').insert(payload).select().single();
+    if (inserted) {
+      const ok = await sendWebhook({ tabla: '03_VISITAS', accion: 'INSERT', datos: inserted });
+      if (!ok) await supabase.from('visitas').update({ sync_pending: true }).eq('id', inserted.id);
+    }
+    setForm(initForm());
+    load();
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar este registro?')) return;
+    await supabase.from('visitas').delete().eq('id', id);
+    load();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg p-4 space-y-3">
+        <h3 className="font-semibold text-slate-700">Nueva visita</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Fecha</label>
+            <input type="date" value={form.fecha} onChange={e => set('fecha', e.target.value)}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Inspección</label>
+            <input value={form.inspeccion} onChange={e => set('inspeccion', e.target.value)}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">OT</label>
+            <input type="number" value={form.ot} onChange={e => set('ot', e.target.value)}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50" placeholder="Opcional" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Tipo de visita</label>
+            <select value={form.tipo_visita} onChange={e => set('tipo_visita', e.target.value)}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50">
+              {TIPOS_VISITA.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Resultado</label>
+            <div className="flex gap-3 mt-2">
+              {['OK', 'NOK'].map(v => (
+                <label key={v} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="ok_visita" value={v} checked={form.ok_visita === v} onChange={() => set('ok_visita', v)} />
+                  <span className={`text-sm font-semibold ${v === 'OK' ? 'text-green-600' : 'text-red-600'}`}>{v}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60">
+          <PlusIcon className="h-4 w-4" /> {saving ? 'Guardando...' : 'Añadir registro'}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg">
+        <table className="min-w-full">
+          <thead className="bg-slate-600 text-slate-100 text-sm">
+            <tr>
+              <th className="px-3 py-2 text-left">FECHA</th>
+              <th className="px-3 py-2 text-left">OT</th>
+              <th className="px-3 py-2 text-left">INSPECCIÓN</th>
+              <th className="px-3 py-2 text-left">TIPO VISITA</th>
+              <th className="px-3 py-2 text-center">OK/NOK</th>
+              <th className="px-3 py-2 text-center">ACCIONES</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-300 text-sm">
+            {loading ? (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Cargando...</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Sin registros este mes</td></tr>
+            ) : rows.map(r => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{r.fecha}</td>
+                <td className="px-3 py-2 text-slate-600">{r.ot ?? '-'}</td>
+                <td className="px-3 py-2 text-slate-700">{r.inspeccion}</td>
+                <td className="px-3 py-2 text-slate-600 max-w-[180px] truncate">{r.tipo_visita}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r.ok_visita === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {r.ok_visita}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <button onClick={() => handleDelete(r.id)} className="p-1 rounded hover:bg-red-50">
+                    <TrashIcon className="h-4 w-4 text-red-500" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
