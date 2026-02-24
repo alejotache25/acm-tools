@@ -22,6 +22,7 @@ const TIPOS_CQ = [
 
 const initForm = () => ({
   fecha: today(), ot: '', cliente: '', descripcion: '',
+  resolucion: '', marca: '',
   tipo_cq: TIPOS_CQ[0], horas: '', materiales: '',
 });
 
@@ -59,6 +60,7 @@ export default function ControlCalidad({ operario }: { operario: string }) {
     const payload = {
       fecha: form.fecha, ot: form.ot ? Number(form.ot) : null,
       operario, cliente: form.cliente, descripcion: form.descripcion,
+      resolucion: form.resolucion || null, marca: form.marca || null,
       tipo_cq: form.tipo_cq, horas, importe_h, materiales, total_cq,
       jefe_id: user.id, sync_pending: false,
     };
@@ -111,9 +113,22 @@ export default function ControlCalidad({ operario }: { operario: string }) {
             </select>
           </div>
           <div className="sm:col-span-2 md:col-span-3">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Descripción del trabajo</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Incidencia *</label>
             <textarea value={form.descripcion} onChange={e => set('descripcion', e.target.value)} rows={2}
-              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50 resize-none" />
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50 resize-none"
+              placeholder="Descripción de la incidencia / problema detectado" />
+          </div>
+          <div className="sm:col-span-2 md:col-span-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Resolución</label>
+            <textarea value={form.resolucion} onChange={e => set('resolucion', e.target.value)} rows={2}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50 resize-none"
+              placeholder="Cómo se resolvió la incidencia" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Marca</label>
+            <input value={form.marca} onChange={e => set('marca', e.target.value)}
+              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-blue-50"
+              placeholder="Marca del vehículo / equipo" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Horas</label>
@@ -150,6 +165,9 @@ export default function ControlCalidad({ operario }: { operario: string }) {
               <th className="px-3 py-2 text-left">FECHA</th>
               <th className="px-3 py-2 text-left">OT</th>
               <th className="px-3 py-2 text-left">CLIENTE</th>
+              <th className="px-3 py-2 text-left">MARCA</th>
+              <th className="px-3 py-2 text-left">INCIDENCIA</th>
+              <th className="px-3 py-2 text-left">RESOLUCIÓN</th>
               <th className="px-3 py-2 text-left">TIPO</th>
               <th className="px-3 py-2 text-right">HORAS</th>
               <th className="px-3 py-2 text-right">TOTAL</th>
@@ -158,16 +176,19 @@ export default function ControlCalidad({ operario }: { operario: string }) {
           </thead>
           <tbody className="bg-white divide-y divide-gray-300 text-sm">
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">Cargando...</td></tr>
+              <tr><td colSpan={11} className="px-4 py-6 text-center text-slate-400">Cargando...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">Sin registros este mes</td></tr>
+              <tr><td colSpan={11} className="px-4 py-6 text-center text-slate-400">Sin registros este mes</td></tr>
             ) : rows.map(r => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 text-slate-500">{r.numero}</td>
                 <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{r.fecha}</td>
                 <td className="px-3 py-2 text-slate-600">{r.ot ?? '-'}</td>
-                <td className="px-3 py-2 text-slate-800 max-w-[120px] truncate">{r.cliente}</td>
-                <td className="px-3 py-2 text-slate-600 max-w-[140px] truncate">{r.tipo_cq}</td>
+                <td className="px-3 py-2 text-slate-800 max-w-[110px] truncate">{r.cliente}</td>
+                <td className="px-3 py-2 text-slate-600 max-w-[90px] truncate">{r.marca ?? '-'}</td>
+                <td className="px-3 py-2 text-slate-700 max-w-[160px] truncate" title={r.descripcion}>{r.descripcion}</td>
+                <td className="px-3 py-2 text-slate-600 max-w-[160px] truncate" title={r.resolucion ?? ''}>{r.resolucion ?? '-'}</td>
+                <td className="px-3 py-2 text-slate-600 max-w-[130px] truncate">{r.tipo_cq}</td>
                 <td className="px-3 py-2 text-right text-slate-700">{r.horas}</td>
                 <td className="px-3 py-2 text-right font-semibold text-slate-800">{Number(r.total_cq).toFixed(2)} €</td>
                 <td className="px-3 py-2 text-center">

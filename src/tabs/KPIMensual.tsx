@@ -1,49 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
-import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { useState, useMemo, useEffect } from 'react';
+import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface KpiMensualData {
-  mes: number;
-  año: number;
-  tecnico: string;
-  // Section B inputs
-  productividad_pct: number;
-  control_documental_pts: number;
-  control_visitas_pct: number;
-  retorno_pct: number;
-  herramientas: 'OK' | 'KO';
-  vehiculo: 'OK' | 'KO';
-  aseo_personal: 'OK' | 'KO';
-  horas_improductivas: number;
-  // Section A extras
-  dietas: number;
-  h_extras: number;
-  // Calculated (persisted for accumulated reads)
-  importe_productividad: number;
-  importe_control_doc: number;
-  importe_visitas: number;
-  importe_retorno: number;
-  importe_herramientas: number;
-  importe_vehiculo: number;
-  importe_aseo: number;
-  penalizacion_horas: number;
-  total_mes: number;
+interface MonthData {
+  prod_pct:      number;  // B: 80|90|95|100|105|110|120
+  ctrl_doc_pts:  number;  // E: -80|1|10|20|30|40|50|60|70|80
+  ctrl_vis_pct:  number;  // H: 100=OK | -100=KO
+  retorno_pct:   number;  // K: any %
+  herr_pct:      number;  // O: 100=OK | -100=KO
+  vehic_pct:     number;  // R: 100=OK | -100=KO
+  aseo_pct:      number;  // U: 100=OK | -100=KO
+  h_obj:         number;  // X: objetivo horas improductivas
+  h_inv:         number;  // Y: horas invertidas
+  // RESUMEN INCENTIVOS fields (col E, F, G)
+  objetivo:      number;  // E: objetivo mensual a cobrar (default 250)
+  dietas:        number;  // F: dietas del mes (manual)
+  h_ext:         number;  // G: horas extra del mes (manual)
 }
 
-type FormInputs = Pick<
-  KpiMensualData,
-  | 'productividad_pct'
-  | 'control_documental_pts'
-  | 'control_visitas_pct'
-  | 'retorno_pct'
-  | 'herramientas'
-  | 'vehiculo'
-  | 'aseo_personal'
-  | 'horas_improductivas'
-  | 'dietas'
-  | 'h_extras'
->;
+type YearData = Record<number, MonthData>;  // key: 1–12
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -52,751 +28,818 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-const OBJETIVO_HORAS = 1.5;
-const PVP_HORA = 35;
-const NOW = new Date();
+const PROD_OPTIONS     = [80, 90, 95, 100, 105, 110, 120];
+const CTRL_DOC_OPTIONS = [-80, 1, 10, 20, 30, 40, 50, 60, 70, 80];
+const PENALTY_RATE     = 39;   // €/hora (W3 en la hoja)
 
-// ─── Reference Table Data ─────────────────────────────────────────────────────
+const DEFAULT_MONTH: MonthData = {
+  prod_pct:     100,
+  ctrl_doc_pts: 1,
+  ctrl_vis_pct: 100,
+  retorno_pct:  0,
+  herr_pct:     100,
+  vehic_pct:    100,
+  aseo_pct:     100,
+  h_obj:        1.5,
+  h_inv:        0,
+  objetivo:     250,
+  dietas:       0,
+  h_ext:        0,
+};
 
-const TABLA_PRODUCTIVIDAD = [
-  { pct: 80,  mensual: 25,  anual: 0    },   // excepción anual = 0
-  { pct: 90,  mensual: 50,  anual: 600  },
-  { pct: 95,  mensual: 75,  anual: 900  },
-  { pct: 100, mensual: 100, anual: 1200 },
-  { pct: 105, mensual: 100, anual: 1200 },
-  { pct: 110, mensual: 100, anual: 1200 },
-  { pct: 120, mensual: 100, anual: 1200 },
-];
+// ─── Storage ──────────────────────────────────────────────────────────────────
 
-const TABLA_CONTROL_DOC = [
-  { pts: -80, mensual: -25, anual: -300 },
-  { pts: 1,   mensual: 100, anual: 1200 },
-  { pts: 10,  mensual: 100, anual: 1200 },
-  { pts: 20,  mensual: 100, anual: 1200 },
-  { pts: 30,  mensual: 100, anual: 1200 },
-  { pts: 40,  mensual: 100, anual: 1200 },
-  { pts: 50,  mensual: 75,  anual: 900  },
-  { pts: 60,  mensual: 50,  anual: 600  },
-  { pts: 70,  mensual: 25,  anual: 300  },
-  { pts: 80,  mensual: 0,   anual: 0    },
-];
+function storageKey(operario: string, año: number) {
+  return `kpi_mensual:${operario}:${año}`;
+}
 
-const TABLA_VISITAS = [
-  { pts:  100, mensual:  25, anual:  300 },
-  { pts: -100, mensual: -25, anual: -300 },
-];
+function loadYear(operario: string, año: number): YearData {
+  try {
+    const raw = localStorage.getItem(storageKey(operario, año));
+    return raw ? (JSON.parse(raw) as YearData) : {};
+  } catch { return {}; }
+}
 
-const TABLA_OLS = [
-  { item: 'Herramientas (OK)', pts:  100, mensual:  5, anual:  60 },
-  { item: 'Herramientas (KO)', pts: -100, mensual:  0, anual:   0 },
-  { item: 'Vehículo (OK)',     pts:  100, mensual: 10, anual: 120 },
-  { item: 'Vehículo (KO)',     pts: -100, mensual:  0, anual:   0 },
-  { item: 'Aseo personal (OK)',pts:  100, mensual: 10, anual: 120 },
-  { item: 'Aseo personal (KO)',pts: -100, mensual:  0, anual:   0 },
-];
+function saveYear(operario: string, año: number, data: YearData) {
+  localStorage.setItem(storageKey(operario, año), JSON.stringify(data));
+}
+
+function kpiRefKey(operario: string, año: number) {
+  return `kpi_ref:${operario}:${año}`;
+}
+
+function loadKpiRef(operario: string, año: number): number {
+  try {
+    const raw = localStorage.getItem(kpiRefKey(operario, año));
+    return raw !== null ? parseFloat(raw) : 0;
+  } catch { return 0; }
+}
+
+function saveKpiRef(operario: string, año: number, val: number) {
+  localStorage.setItem(kpiRefKey(operario, año), String(val));
+}
+
+function getMonthData(data: YearData, mes: number): MonthData {
+  return data[mes] ?? { ...DEFAULT_MONTH };
+}
 
 // ─── Lookup Functions ─────────────────────────────────────────────────────────
+// Exact VLOOKUP approximate-match replication from the spreadsheet
 
-function lookupProductividad(pct: number): number {
-  let result = 0;
-  for (const row of TABLA_PRODUCTIVIDAD) {
-    if (pct >= row.pct) result = row.mensual;
-    else break;
-  }
-  return result;
-}
-
-function lookupControlDoc(pts: number): number {
-  if (pts >= 80)   return 0;
-  if (pts >= 70)   return 25;
-  if (pts >= 60)   return 50;
-  if (pts >= 50)   return 75;
-  if (pts >= 1)    return 100;
-  if (pts <= -80)  return -25;
-  return 100; // < 1 but > -80: full bonus
-}
-
-function lookupVisitas(pct: number): number {
-  if (pct >= 100)  return 25;
-  if (pct <= -100) return -25;
+// Productividad (A4:C10) and RETORNO (AS4:AU44) share the same thresholds
+function lookupProd(pct: number): number {
+  if (pct >= 80)  return pct >= 100 ? 100 : pct >= 95 ? 75 : pct >= 90 ? 50 : 25;
   return 0;
 }
 
-// ─── Storage Helpers ──────────────────────────────────────────────────────────
-
-const kpiKey    = (t: string, a: number, m: number) => `kpi_mensual:${t}:${a}:${m}`;
-const umbralKey = (t: string, a: number)            => `kpi_umbral:${t}:${a}`;
-
-function loadKpi(tecnico: string, año: number, mes: number): KpiMensualData | null {
-  try {
-    const raw = localStorage.getItem(kpiKey(tecnico, año, mes));
-    return raw ? (JSON.parse(raw) as KpiMensualData) : null;
-  } catch { return null; }
+// Control Documental (I4:K13)
+function lookupCtrlDoc(pts: number): number {
+  if (pts >= 80)  return 0;
+  if (pts >= 70)  return 25;
+  if (pts >= 60)  return 50;
+  if (pts >= 50)  return 75;
+  if (pts >= 1)   return 100;
+  return -25;   // pts < 1 → matches -80 threshold
 }
 
-function saveKpi(data: KpiMensualData): void {
-  localStorage.setItem(kpiKey(data.tecnico, data.año, data.mes), JSON.stringify(data));
+// Control Visitas (A15:C16)
+function lookupVis(pct: number): number {
+  return pct >= 100 ? 25 : -25;
 }
 
-function loadUmbral(tecnico: string, año: number): number {
-  try { return JSON.parse(localStorage.getItem(umbralKey(tecnico, año)) || '0') as number; }
-  catch { return 0; }
+// Herramientas (O4:Q5)
+function lookupHerr(pct: number): number {
+  return pct >= 100 ? 5 : 0;
 }
 
-function saveUmbral(tecnico: string, año: number, val: number): void {
-  localStorage.setItem(umbralKey(tecnico, año), JSON.stringify(val));
+// Vehículo (O5:Q6)
+function lookupVehic(pct: number): number {
+  return pct >= 100 ? 10 : 0;
 }
 
-const defaultForm = (): FormInputs => ({
-  productividad_pct: 100,
-  control_documental_pts: 1,
-  control_visitas_pct: 100,
-  retorno_pct: 0,
-  herramientas: 'OK',
-  vehiculo: 'OK',
-  aseo_personal: 'OK',
-  horas_improductivas: OBJETIVO_HORAS,
-  dietas: 0,
-  h_extras: 0,
-});
-
-// ─── Helper Components ────────────────────────────────────────────────────────
-
-function Collapsible({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-slate-300 rounded-lg overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2 bg-slate-500 text-white text-xs font-medium hover:bg-slate-600 transition-colors"
-      >
-        <span>{title}</span>
-        {open ? <ChevronUpIcon className="h-3.5 w-3.5" /> : <ChevronDownIcon className="h-3.5 w-3.5" />}
-      </button>
-      {open && <div className="bg-white">{children}</div>}
-    </div>
-  );
+// Aseo personal (O8:Q9)
+function lookupAseo(pct: number): number {
+  return pct >= 100 ? 10 : 0;
 }
 
-function RefTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
-  return (
-    <table className="min-w-full text-xs">
-      <thead className="bg-slate-100">
-        <tr>
-          {headers.map(h => (
-            <th key={h} className="px-3 py-1.5 text-left font-semibold text-slate-600">{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {rows.map((row, i) => (
-          <tr key={i} className="hover:bg-slate-50">
-            {row.map((cell, j) => <td key={j} className="px-3 py-1.5 text-slate-700">{cell}</td>)}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+// ─── Display Helpers ──────────────────────────────────────────────────────────
+
+function euro(n: number): string {
+  if (n === 0) return '0 €';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '−' : '';
+  return `${sign}${abs % 1 === 0 ? abs.toFixed(0) : abs.toFixed(2)} €`;
 }
 
-function OKKOToggle({
-  value,
-  onChange,
-}: {
-  value: 'OK' | 'KO';
-  onChange: (v: 'OK' | 'KO') => void;
-}) {
-  return (
-    <div className="flex gap-1.5 justify-center">
-      {(['OK', 'KO'] as const).map(v => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => onChange(v)}
-          className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-            value === v
-              ? v === 'OK'
-                ? 'bg-green-600 text-white shadow-sm scale-105'
-                : 'bg-red-600 text-white shadow-sm scale-105'
-              : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-          }`}
-        >
-          {v}
-        </button>
-      ))}
-    </div>
-  );
+function clrEuro(n: number): string {
+  if (n > 0) return 'text-green-700 font-semibold';
+  if (n < 0) return 'text-red-600 font-semibold';
+  return 'text-slate-400';
 }
 
-function fmt(n: number): string {
-  const abs = Math.abs(n).toFixed(2);
-  return n < 0 ? `−${abs} €` : `${abs} €`;
-}
+// ─── Input Cell Styles ────────────────────────────────────────────────────────
 
-function clr(n: number): string {
-  if (n > 0) return 'text-green-600';
-  if (n < 0) return 'text-red-600';
-  return 'text-slate-500';
-}
+const selectCls = 'bg-blue-50 border border-blue-200 rounded px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer';
+const numCls    = 'bg-blue-50 border border-blue-200 rounded px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-blue-400 text-center w-14';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function KPIMensual({ operario }: { operario: string }) {
-  const [mes,  setMes]  = useState(NOW.getMonth() + 1);
-  const [año,  setAño]  = useState(NOW.getFullYear());
-  const [form, setForm] = useState<FormInputs>(defaultForm());
-  const [umbral, setUmbral] = useState(0);
-  const [showTables, setShowTables] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
-  // Incrementing this triggers memos to re-read localStorage after a save
-  const [tick, setTick] = useState(0);
-
-  // Load stored data when mes / año / operario changes
-  useEffect(() => {
-    const data = loadKpi(operario, año, mes);
-    setForm(
-      data
-        ? {
-            productividad_pct:       data.productividad_pct,
-            control_documental_pts:  data.control_documental_pts,
-            control_visitas_pct:     data.control_visitas_pct,
-            retorno_pct:             data.retorno_pct,
-            herramientas:            data.herramientas,
-            vehiculo:                data.vehiculo,
-            aseo_personal:           data.aseo_personal,
-            horas_improductivas:     data.horas_improductivas,
-            dietas:                  data.dietas,
-            h_extras:                data.h_extras,
-          }
-        : defaultForm()
-    );
-  }, [operario, año, mes]);
+  const now = new Date();
+  const [año, setAño]     = useState(now.getFullYear());
+  const [data, setData]   = useState<YearData>(() => loadYear(operario, año));
+  const [kpiRef, setKpiRef] = useState(() => loadKpiRef(operario, now.getFullYear()));
 
   useEffect(() => {
-    setUmbral(loadUmbral(operario, año));
+    setData(loadYear(operario, año));
+    setKpiRef(loadKpiRef(operario, año));
   }, [operario, año]);
 
-  // ─── Live calculations ─────────────────────────────────────────────────────
-
-  const netProd          = form.productividad_pct - form.retorno_pct;
-  const impProductividad = lookupProductividad(netProd);
-  const impControlDoc    = lookupControlDoc(form.control_documental_pts);
-  const impVisitas       = lookupVisitas(form.control_visitas_pct);
-  const impRetorno       = 0;
-  const impHerramientas  = form.herramientas  === 'OK' ? 5  : 0;
-  const impVehiculo      = form.vehiculo      === 'OK' ? 10 : 0;
-  const impAseo          = form.aseo_personal === 'OK' ? 10 : 0;
-
-  const horasDif     = form.horas_improductivas - OBJETIVO_HORAS;
-  const horasPctVal  = OBJETIVO_HORAS > 0 ? (horasDif / OBJETIVO_HORAS) * 100 : 0;
-  const penalizacion = +(Math.max(horasDif, 0) * PVP_HORA).toFixed(2);
-
-  const totalMes = +(
-    impProductividad + impControlDoc + impVisitas + impRetorno +
-    impHerramientas + impVehiculo + impAseo - penalizacion
-  ).toFixed(2);
-
-  // ─── Accumulated per concept (reads localStorage months 1..mes) ───────────
-
-  const accum = useMemo(() => {
-    const r = {
-      productividad: 0, control_doc: 0, visitas: 0, retorno: 0,
-      herramientas: 0, vehiculo: 0, aseo: 0, total: 0,
-    };
-    for (let m = 1; m <= mes; m++) {
-      const d = loadKpi(operario, año, m);
-      if (d) {
-        r.productividad += d.importe_productividad;
-        r.control_doc   += d.importe_control_doc;
-        r.visitas       += d.importe_visitas;
-        r.retorno       += d.importe_retorno;
-        r.herramientas  += d.importe_herramientas;
-        r.vehiculo      += d.importe_vehiculo;
-        r.aseo          += d.importe_aseo;
-        r.total         += d.total_mes;
-      }
-    }
-    return r;
-  }, [operario, año, mes, tick]);
-
-  // ─── Annual summary rows ──────────────────────────────────────────────────
-
-  const annualRows = useMemo(() => {
-    let runningTotal   = 0;
-    let runningCobrar  = 0;
-    return Array.from({ length: 12 }, (_, i) => {
-      const m      = i + 1;
-      const stored = loadKpi(operario, año, m)?.total_mes ?? null;
-      const imp    = stored ?? 0;
-      runningTotal  += imp;
-      const cobrar  = Math.max(imp - umbral, 0);
-      runningCobrar += cobrar;
-      return { mes: m, stored, imp, acum: runningTotal, cobrar, acumCobrar: runningCobrar };
-    });
-  }, [operario, año, umbral, tick]);
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const set = <K extends keyof FormInputs>(k: K, v: FormInputs[K]) =>
-    setForm(f => ({ ...f, [k]: v }));
-
-  const handleSave = () => {
-    const data: KpiMensualData = {
-      mes, año, tecnico: operario,
-      ...form,
-      importe_productividad: impProductividad,
-      importe_control_doc:   impControlDoc,
-      importe_visitas:       impVisitas,
-      importe_retorno:       impRetorno,
-      importe_herramientas:  impHerramientas,
-      importe_vehiculo:      impVehiculo,
-      importe_aseo:          impAseo,
-      penalizacion_horas:    penalizacion,
-      total_mes:             totalMes,
-    };
-    saveKpi(data);
-    saveUmbral(operario, año, umbral);
-    setTick(t => t + 1);
-    setSaveMsg(`✓ Guardado — ${MESES[mes - 1]} ${año}`);
-    setTimeout(() => setSaveMsg(''), 3000);
+  const updateKpiRef = (val: number) => {
+    setKpiRef(val);
+    saveKpiRef(operario, año, val);
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const updateField = (mes: number, field: keyof MonthData, value: number) => {
+    setData(prev => {
+      const updated: YearData = {
+        ...prev,
+        [mes]: { ...getMonthData(prev, mes), [field]: value },
+      };
+      saveYear(operario, año, updated);
+      return updated;
+    });
+  };
+
+  // Compute all 12 months with running accumulators (mirrors spreadsheet formulas)
+  const rows = useMemo(() => {
+    let acc_prod = 0, acc_ctrl_doc = 0, acc_ctrl_vis = 0, acc_ret = 0;
+    let acc_herr = 0, acc_vehic = 0, acc_aseo = 0, acc_total = 0;
+
+    return Array.from({ length: 12 }, (_, i) => {
+      const mes = i + 1;
+      const md  = getMonthData(data, mes);
+
+      // Column C: Importe Productividad = BUSCARV(B, A4:C10, 2)
+      const imp_prod     = lookupProd(md.prod_pct);
+      // Column F: Importe Control Documental = BUSCARV(E, I4:K13, 2)
+      const imp_ctrl_doc = lookupCtrlDoc(md.ctrl_doc_pts);
+      // Column I: Importe Control Visitas = BUSCARV(H, A15:C16, 2)
+      const imp_ctrl_vis = lookupVis(md.ctrl_vis_pct);
+      // Column L: %P − %R
+      const net_pct      = md.prod_pct - md.retorno_pct;
+      // Column M: Importe Retorno = BUSCARV(L, AS4:AU44, 2) — same thresholds as productividad
+      const imp_ret      = lookupProd(net_pct);
+      // Column P: Importe Herramientas
+      const imp_herr     = lookupHerr(md.herr_pct);
+      // Column S: Importe Vehículo
+      const imp_vehic    = lookupVehic(md.vehic_pct);
+      // Column V: Importe Aseo personal
+      const imp_aseo     = lookupAseo(md.aseo_pct);
+      // Column Z: Dif = Y − X
+      const h_dif        = md.h_inv - md.h_obj;
+      // Column AA: % = Z / X
+      const h_pct        = md.h_obj > 0 ? (h_dif / md.h_obj) * 100 : 0;
+      // Column AB: Penalización = MAX(Z,0) × W3
+      const penalizacion = +(Math.max(h_dif, 0) * PENALTY_RATE).toFixed(2);
+      // Column AC: TOTAL = F + I + M + P + S + V − AB  (C/productividad NOT in total)
+      const total        = +(imp_ctrl_doc + imp_ctrl_vis + imp_ret + imp_herr + imp_vehic + imp_aseo - penalizacion).toFixed(2);
+
+      // Running accumulators (columns D, G, J, N, Q, T, W)
+      acc_prod     += imp_prod;
+      acc_ctrl_doc += imp_ctrl_doc;
+      acc_ctrl_vis += imp_ctrl_vis;
+      acc_ret      += imp_ret;
+      acc_herr     += imp_herr;
+      acc_vehic    += imp_vehic;
+      acc_aseo     += imp_aseo;
+      acc_total    += total;
+
+      return {
+        mes, md,
+        imp_prod,     acc_prod:     acc_prod,
+        imp_ctrl_doc, acc_ctrl_doc: acc_ctrl_doc,
+        imp_ctrl_vis, acc_ctrl_vis: acc_ctrl_vis,
+        net_pct, imp_ret, acc_ret: acc_ret,
+        imp_herr, acc_herr: acc_herr,
+        imp_vehic,    acc_vehic:    acc_vehic,
+        imp_aseo,     acc_aseo:     acc_aseo,
+        h_dif, h_pct, penalizacion,
+        total, acc_total: acc_total,
+      };
+    });
+  }, [data]);
+
+  // Last row has the annual running totals
+  const ann = rows[11];
+  const curMes = año === now.getFullYear() ? now.getMonth() + 1 : -1;
+
+  // RESUMEN INCENTIVOS summary values
+  const resumen = useMemo(() => {
+    let total_importe = 0, total_cobrar = 0, total_objetivo = 0, total_dietas = 0, total_hext = 0;
+    let totalp_importe = 0, totalp_cobrar = 0, totalp_objetivo = 0;
+
+    for (const r of rows) {
+      const cobrar = Math.max(r.total - kpiRef, 0);
+      total_importe  += r.total;
+      total_cobrar   += cobrar;
+      total_objetivo += r.md.objetivo;
+      total_dietas   += r.md.dietas;
+      total_hext     += r.md.h_ext;
+      if (r.total > 0) {
+        totalp_importe  += r.total;
+        totalp_cobrar   += cobrar;
+        totalp_objetivo += r.md.objetivo;
+      }
+    }
+
+    const pct_objetivo = totalp_objetivo > 0 ? (total_cobrar / totalp_objetivo) * 100 : null;
+    return { total_importe, total_cobrar, total_objetivo, total_dietas, total_hext, totalp_importe, totalp_cobrar, totalp_objetivo, pct_objetivo };
+  }, [rows, kpiRef]);
+
+  // ─── Shared th style helpers ─────────────────────────────────────────────
+
+  const thBase  = 'px-2 py-1 text-center border border-slate-500 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap';
+  const thProd  = `${thBase} bg-blue-800`;
+  const thCal   = `${thBase} bg-emerald-800`;
+  const thOrd   = `${thBase} bg-amber-800`;
+  const thHI    = `${thBase} bg-purple-800`;
+  const thTot   = `${thBase} bg-slate-600`;
+  const thProd2 = `${thBase} bg-blue-700 text-[9px]`;
+  const thCal2  = `${thBase} bg-emerald-700 text-[9px]`;
+  const thOrd2  = `${thBase} bg-amber-700 text-[9px]`;
+  const thHI2   = `${thBase} bg-purple-700 text-[9px]`;
+  const thProd3 = `${thBase} bg-blue-600 text-[9px]`;
+  const thCal3  = `${thBase} bg-emerald-600 text-[9px]`;
+  const thOrd3  = `${thBase} bg-amber-600 text-[9px]`;
+  const thHI3   = `${thBase} bg-purple-600 text-[9px]`;
+
+  const td  = 'px-2 py-1.5 text-center border border-slate-200 text-xs whitespace-nowrap';
+  const tdi = 'px-1 py-1 border border-slate-200';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
-      {/* ── Global Header: Mes + Año ── */}
-      <div className="flex flex-wrap items-center gap-3 bg-gradient-to-r from-blue-900 to-blue-800 border border-blue-700 rounded-xl px-5 py-3">
-        <span className="text-white font-bold text-sm tracking-wide">KPI Mensual</span>
+      {/* ── Year selector ── */}
+      <div className="flex items-center gap-3 bg-gradient-to-r from-blue-900 to-blue-800 text-white rounded-xl px-5 py-3">
+        <span className="font-bold text-sm tracking-wide">KPI Mensual</span>
         <span className="text-blue-500">·</span>
-
-        <div className="flex items-center gap-2">
-          <label className="text-blue-300 text-xs font-medium">Mes</label>
-          <select
-            value={mes}
-            onChange={e => setMes(Number(e.target.value))}
-            className="bg-blue-800 text-white border border-blue-600 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-cyan-400"
+        <span className="text-blue-300 text-sm italic">{operario}</span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setAño(y => y - 1)}
+            className="p-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+            title="Año anterior"
           >
-            {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
+            <ChevronLeftIcon className="h-4 w-4" />
+          </button>
+          <span className="font-bold text-xl w-16 text-center tabular-nums">{año}</span>
+          <button
+            onClick={() => setAño(y => y + 1)}
+            className="p-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+            title="Año siguiente"
+          >
+            <ChevronRightIcon className="h-4 w-4" />
+          </button>
         </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-blue-300 text-xs font-medium">Año</label>
-          <input
-            type="number"
-            value={año}
-            onChange={e => setAño(Number(e.target.value))}
-            className="bg-blue-800 text-white border border-blue-600 rounded-lg px-3 py-1.5 text-sm w-24 outline-none focus:ring-2 focus:ring-cyan-400 text-center"
-          />
-        </div>
-
-        <span className="ml-auto text-blue-400 text-xs italic">{operario}</span>
       </div>
 
-      {/* ── Reference Tables (collapsible) ── */}
-      <div className="bg-slate-300 rounded-lg p-4">
-        <button
-          type="button"
-          onClick={() => setShowTables(o => !o)}
-          className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-blue-700 transition-colors"
-        >
-          {showTables
-            ? <ChevronUpIcon className="h-4 w-4" />
-            : <ChevronDownIcon className="h-4 w-4" />}
-          {showTables ? 'Ocultar tablas de referencia' : 'Ver tablas de referencia'}
-        </button>
+      {/* ── Main KPI table ── */}
+      <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-sm">
+        <table className="min-w-max border-collapse text-xs">
+          <thead className="text-white">
 
-        {showTables && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <Collapsible title="Tabla 1 — Productividad">
-              <RefTable
-                headers={['% Consecución', 'Mensual €', 'Anual €']}
-                rows={TABLA_PRODUCTIVIDAD.map(r => [`${r.pct}%`, `${r.mensual} €`, `${r.anual} €`])}
-              />
-            </Collapsible>
+            {/* Level 1 — Section groups */}
+            <tr>
+              <th rowSpan={3} className={`px-3 py-2 text-left border border-slate-600 bg-slate-700 min-w-[96px] text-xs font-bold uppercase`}>
+                MES
+              </th>
+              <th colSpan={3} className={thProd}>PRODUCTIVIDAD</th>
+              <th colSpan={10} className={thCal}>CALIDAD</th>
+              <th colSpan={9}  className={thOrd}>ORDEN LIMPIEZA Y SEGURIDAD</th>
+              <th colSpan={5}  className={thHI}>HORAS IMPRODUCTIVAS</th>
+              <th rowSpan={3} className={`${thTot} min-w-[80px]`}>TOTAL</th>
+            </tr>
 
-            <Collapsible title="Tabla 2 — Control Documental">
-              <RefTable
-                headers={['Puntos', 'Mensual €', 'Anual €']}
-                rows={TABLA_CONTROL_DOC.map(r => [`${r.pts} pts`, `${r.mensual} €`, `${r.anual} €`])}
-              />
-            </Collapsible>
+            {/* Level 2 — Sub-sections */}
+            <tr>
+              {/* Productividad sub */}
+              <th colSpan={3} className={thProd2}> </th>
+              {/* CALIDAD sub-sections */}
+              <th colSpan={3} className={thCal2}>Control Documental</th>
+              <th colSpan={3} className={thCal2}>Control Visitas</th>
+              <th colSpan={4} className={thCal2}>RETORNO</th>
+              {/* ORDEN sub-sections */}
+              <th colSpan={3} className={thOrd2}>Herramientas</th>
+              <th colSpan={3} className={thOrd2}>Vehículo</th>
+              <th colSpan={3} className={thOrd2}>Aseo personal</th>
+              {/* Horas sub */}
+              <th colSpan={5} className={thHI2}> </th>
+            </tr>
 
-            <Collapsible title="Tabla 3 — Control Visitas">
-              <RefTable
-                headers={['Objetivo', 'Mensual €', 'Anual €']}
-                rows={TABLA_VISITAS.map(r => [`${r.pts} pts`, `${r.mensual} €`, `${r.anual} €`])}
-              />
-            </Collapsible>
-
-            <Collapsible title="Tabla 4 — Orden, Limpieza y Seguridad">
-              <RefTable
-                headers={['Ítem', 'Puntos', 'Mensual €', 'Anual €']}
-                rows={TABLA_OLS.map(r => [r.item, `${r.pts} pts`, `${r.mensual} €`, `${r.anual} €`])}
-              />
-            </Collapsible>
-
-            <Collapsible title="Tabla 5 — Horas Improductivas">
-              <div className="p-3 text-xs text-slate-700 space-y-1.5">
-                <div className="flex gap-6">
-                  <span>Objetivo: <strong>{OBJETIVO_HORAS}h</strong></span>
-                  <span>PVP: <strong>{PVP_HORA} €/h</strong></span>
-                </div>
-                <div>Diferencia = invertidas − objetivo</div>
-                <div>% = diferencia / objetivo × 100</div>
-                <div>Penalización = MAX(diferencia, 0) × {PVP_HORA} €</div>
-              </div>
-            </Collapsible>
-
-            <Collapsible title="Tabla 6 — Retornos">
-              <div className="p-3 text-xs text-slate-700 space-y-1">
-                <div>Objetivo: <strong>0</strong></div>
-                <div className="text-slate-500 italic">
-                  Las horas de retorno restan de la productividad (% P − % R).
-                </div>
-              </div>
-            </Collapsible>
-          </div>
-        )}
-      </div>
-
-      {/* ── Section B — Cuadro Mensual ── */}
-      <div className="bg-slate-300 rounded-lg p-4">
-        <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide mb-4">
-          Sección B — Cuadro Mensual · {MESES[mes - 1]} {año}
-        </h3>
-
-        {/* Horas Improductivas inline (only manual input in this block) */}
-        <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3 flex flex-wrap items-center gap-4">
-          <span className="text-sm font-semibold text-slate-700">Horas Improductivas</span>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">Horas invertidas</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={form.horas_improductivas}
-              onChange={e => set('horas_improductivas', parseFloat(e.target.value) || 0)}
-              className="w-20 bg-slate-100 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center"
-            />
-          </div>
-          <div className="flex flex-wrap gap-4 text-xs text-slate-600">
-            <span>Obj: <strong>{OBJETIVO_HORAS}h</strong></span>
-            <span>
-              Dif:{' '}
-              <strong className={horasDif > 0 ? 'text-red-600' : 'text-green-600'}>
-                {horasDif >= 0 ? '+' : ''}{horasDif.toFixed(2)}h
-              </strong>
-            </span>
-            <span>%: <strong>{horasPctVal.toFixed(1)}%</strong></span>
-            {penalizacion > 0
-              ? <span className="text-red-600 font-bold">Penalización: −{penalizacion.toFixed(2)} €</span>
-              : <span className="text-green-600">Sin penalización ✓</span>
-            }
-          </div>
-        </div>
-
-        {/* KPI table */}
-        <div className="overflow-x-auto rounded-lg">
-          <table className="min-w-full">
-            <thead className="bg-slate-600 text-slate-100 text-sm">
-              <tr>
-                <th className="px-3 py-2.5 text-left w-44">CONCEPTO</th>
-                <th className="px-3 py-2.5 text-center">INPUT / % OBJ</th>
-                <th className="px-3 py-2.5 text-right">IMPORTE €</th>
-                <th className="px-3 py-2.5 text-right">ACUMULADO €</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200 text-sm">
-
-              {/* Productividad */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Productividad</td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <input
-                      type="number" step="1"
-                      value={form.productividad_pct}
-                      onChange={e => set('productividad_pct', parseFloat(e.target.value) || 0)}
-                      className="w-20 bg-slate-100 rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                    <span className="text-slate-400 text-xs">%</span>
-                  </div>
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impProductividad)}`}>
-                  {fmt(impProductividad)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.productividad)}`}>
-                  {fmt(accum.productividad)}
-                </td>
-              </tr>
-
+            {/* Level 3 — Column labels */}
+            <tr>
+              {/* Productividad cols */}
+              <th className={`${thProd3} min-w-[72px]`}>%Obj</th>
+              <th className={`${thProd3} min-w-[62px]`}>Importe</th>
+              <th className={`${thProd3} min-w-[66px]`}>Acumulado</th>
               {/* Control Documental */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Control Documental</td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <input
-                      type="number" step="1"
-                      value={form.control_documental_pts}
-                      onChange={e => set('control_documental_pts', parseFloat(e.target.value) || 0)}
-                      className="w-20 bg-slate-100 rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                    <span className="text-slate-400 text-xs">pts</span>
-                  </div>
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impControlDoc)}`}>
-                  {fmt(impControlDoc)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.control_doc)}`}>
-                  {fmt(accum.control_doc)}
-                </td>
-              </tr>
-
+              <th className={`${thCal3} min-w-[72px]`}>Puntos</th>
+              <th className={`${thCal3} min-w-[62px]`}>Importe</th>
+              <th className={`${thCal3} min-w-[66px]`}>Acumulado</th>
               {/* Control Visitas */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Control Visitas</td>
-                <td className="px-3 py-2.5 text-center">
-                  <select
-                    value={form.control_visitas_pct}
-                    onChange={e => set('control_visitas_pct', Number(e.target.value))}
-                    className="bg-slate-100 rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={100}>100 — OK (+25 €)</option>
-                    <option value={-100}>−100 — NOK (−25 €)</option>
-                  </select>
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impVisitas)}`}>
-                  {fmt(impVisitas)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.visitas)}`}>
-                  {fmt(accum.visitas)}
-                </td>
-              </tr>
-
+              <th className={`${thCal3} min-w-[66px]`}>Estado</th>
+              <th className={`${thCal3} min-w-[62px]`}>Importe</th>
+              <th className={`${thCal3} min-w-[66px]`}>Acumulado</th>
               {/* Retorno */}
-              <tr className="hover:bg-blue-50 bg-blue-50/40">
-                <td className="px-3 py-2.5">
-                  <div className="font-medium text-slate-800">Retorno</div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    % P − % R ={' '}
-                    <strong className="text-blue-700">{netProd}%</strong>
-                    <span className="ml-2 text-slate-400">(prod. neta)</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <input
-                      type="number" step="1" min="0"
-                      value={form.retorno_pct}
-                      onChange={e => set('retorno_pct', parseFloat(e.target.value) || 0)}
-                      className="w-20 bg-slate-100 rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                    <span className="text-slate-400 text-xs">%</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-right text-slate-400 text-xs italic">— (afecta % prod.)</td>
-                <td className="px-3 py-2.5 text-right text-slate-400">—</td>
-              </tr>
-
+              <th className={`${thCal3} min-w-[60px]`}>%Ret</th>
+              <th className={`${thCal3} min-w-[60px]`}>%P−%R</th>
+              <th className={`${thCal3} min-w-[62px]`}>Importe</th>
+              <th className={`${thCal3} min-w-[66px]`}>Acumulado</th>
               {/* Herramientas */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Herramientas</td>
-                <td className="px-3 py-2.5">
-                  <OKKOToggle value={form.herramientas} onChange={v => set('herramientas', v)} />
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impHerramientas)}`}>
-                  {fmt(impHerramientas)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.herramientas)}`}>
-                  {fmt(accum.herramientas)}
-                </td>
-              </tr>
-
+              <th className={`${thOrd3} min-w-[62px]`}>Estado</th>
+              <th className={`${thOrd3} min-w-[56px]`}>Importe</th>
+              <th className={`${thOrd3} min-w-[66px]`}>Acumulado</th>
               {/* Vehículo */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Vehículo</td>
-                <td className="px-3 py-2.5">
-                  <OKKOToggle value={form.vehiculo} onChange={v => set('vehiculo', v)} />
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impVehiculo)}`}>
-                  {fmt(impVehiculo)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.vehiculo)}`}>
-                  {fmt(accum.vehiculo)}
-                </td>
-              </tr>
+              <th className={`${thOrd3} min-w-[62px]`}>Estado</th>
+              <th className={`${thOrd3} min-w-[56px]`}>Importe</th>
+              <th className={`${thOrd3} min-w-[66px]`}>Acumulado</th>
+              {/* Aseo personal */}
+              <th className={`${thOrd3} min-w-[62px]`}>Estado</th>
+              <th className={`${thOrd3} min-w-[56px]`}>Importe</th>
+              <th className={`${thOrd3} min-w-[66px]`}>Acumulado</th>
+              {/* Horas Improductivas */}
+              <th className={`${thHI3} min-w-[60px]`}>H.Obj</th>
+              <th className={`${thHI3} min-w-[60px]`}>H.Inv</th>
+              <th className={`${thHI3} min-w-[56px]`}>Dif</th>
+              <th className={`${thHI3} min-w-[52px]`}>%</th>
+              <th className={`${thHI3} min-w-[70px]`}>Penaliz.</th>
+            </tr>
+          </thead>
 
-              {/* Aseo Personal */}
-              <tr className="hover:bg-slate-50">
-                <td className="px-3 py-2.5 font-medium text-slate-800">Aseo Personal</td>
-                <td className="px-3 py-2.5">
-                  <OKKOToggle value={form.aseo_personal} onChange={v => set('aseo_personal', v)} />
-                </td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${clr(impAseo)}`}>
-                  {fmt(impAseo)}
-                </td>
-                <td className={`px-3 py-2.5 text-right ${clr(accum.aseo)}`}>
-                  {fmt(accum.aseo)}
-                </td>
-              </tr>
+          <tbody>
+            {rows.map(r => {
+              const isCurrent = r.mes === curMes;
+              const rowBg = isCurrent ? 'bg-blue-50' : 'bg-white hover:bg-slate-50/80';
 
-              {/* Penalización horas (only shown when > 0) */}
-              {penalizacion > 0 && (
-                <tr className="bg-red-50">
-                  <td className="px-3 py-2 text-red-700 font-medium text-sm">
-                    Penalización H. Improductivas
+              return (
+                <tr key={r.mes} className={`${rowBg} transition-colors`}>
+
+                  {/* MES */}
+                  <td className={`px-3 py-1.5 border border-slate-200 font-medium whitespace-nowrap ${isCurrent ? 'text-blue-700 font-bold bg-blue-100' : 'text-slate-700'}`}>
+                    {MESES[r.mes - 1]}
+                    {isCurrent && <span className="ml-1 text-blue-400 text-[9px]">◀</span>}
                   </td>
-                  <td className="px-3 py-2 text-center text-red-500 text-xs">
-                    {horasDif.toFixed(2)}h exceso × {PVP_HORA} €/h
+
+                  {/* ── PRODUCTIVIDAD ── */}
+
+                  {/* B: %Obj Productividad (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.prod_pct}
+                      onChange={e => updateField(r.mes, 'prod_pct', Number(e.target.value))}
+                      className={`${selectCls} w-16`}
+                    >
+                      {PROD_OPTIONS.map(v => <option key={v} value={v}>{v}%</option>)}
+                    </select>
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-red-600">
-                    {fmt(-penalizacion)}
+                  {/* C: Importe Productividad (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_prod)}`}>{euro(r.imp_prod)}</td>
+                  {/* D: Acumulado Productividad (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_prod)}`}>{euro(r.acc_prod)}</td>
+
+                  {/* ── CALIDAD — Control Documental ── */}
+
+                  {/* E: Puntos Obj CtrlDoc (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.ctrl_doc_pts}
+                      onChange={e => updateField(r.mes, 'ctrl_doc_pts', Number(e.target.value))}
+                      className={`${selectCls} w-16`}
+                    >
+                      {CTRL_DOC_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </td>
-                  <td className="px-3 py-2" />
+                  {/* F: Importe CtrlDoc (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_ctrl_doc)}`}>{euro(r.imp_ctrl_doc)}</td>
+                  {/* G: Acumulado CtrlDoc (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_ctrl_doc)}`}>{euro(r.acc_ctrl_doc)}</td>
+
+                  {/* ── CALIDAD — Control Visitas ── */}
+
+                  {/* H: %Obj Visitas OK/KO (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.ctrl_vis_pct}
+                      onChange={e => updateField(r.mes, 'ctrl_vis_pct', Number(e.target.value))}
+                      className={`${selectCls} w-16`}
+                    >
+                      <option value={100}>OK</option>
+                      <option value={-100}>KO</option>
+                    </select>
+                  </td>
+                  {/* I: Importe Visitas (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_ctrl_vis)}`}>{euro(r.imp_ctrl_vis)}</td>
+                  {/* J: Acumulado Visitas (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_ctrl_vis)}`}>{euro(r.acc_ctrl_vis)}</td>
+
+                  {/* ── CALIDAD — RETORNO ── */}
+
+                  {/* K: %Obj Retorno (manual number) */}
+                  <td className={tdi}>
+                    <input
+                      type="number" step="1" min="0" max="100"
+                      value={r.md.retorno_pct}
+                      onChange={e => updateField(r.mes, 'retorno_pct', parseFloat(e.target.value) || 0)}
+                      className={numCls}
+                    />
+                  </td>
+                  {/* L: %P−%R (auto) */}
+                  <td className={`${td} ${r.net_pct >= 100 ? 'text-green-700' : r.net_pct >= 80 ? 'text-amber-600' : 'text-red-600'} font-semibold`}>
+                    {r.net_pct}%
+                  </td>
+                  {/* M: Importe Retorno (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_ret)}`}>{euro(r.imp_ret)}</td>
+                  {/* N: Acumulado Retorno (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_ret)}`}>{euro(r.acc_ret)}</td>
+
+                  {/* ── ORDEN LIMPIEZA — Herramientas ── */}
+
+                  {/* O: Estado Herramientas OK/KO (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.herr_pct}
+                      onChange={e => updateField(r.mes, 'herr_pct', Number(e.target.value))}
+                      className={`${selectCls} w-14`}
+                    >
+                      <option value={100}>OK</option>
+                      <option value={-100}>KO</option>
+                    </select>
+                  </td>
+                  {/* P: Importe Herramientas (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_herr)}`}>{euro(r.imp_herr)}</td>
+                  {/* Q: Acumulado Herramientas (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_herr)}`}>{euro(r.acc_herr)}</td>
+
+                  {/* ── ORDEN LIMPIEZA — Vehículo ── */}
+
+                  {/* R: Estado Vehículo OK/KO (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.vehic_pct}
+                      onChange={e => updateField(r.mes, 'vehic_pct', Number(e.target.value))}
+                      className={`${selectCls} w-14`}
+                    >
+                      <option value={100}>OK</option>
+                      <option value={-100}>KO</option>
+                    </select>
+                  </td>
+                  {/* S: Importe Vehículo (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_vehic)}`}>{euro(r.imp_vehic)}</td>
+                  {/* T: Acumulado Vehículo (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_vehic)}`}>{euro(r.acc_vehic)}</td>
+
+                  {/* ── ORDEN LIMPIEZA — Aseo personal ── */}
+
+                  {/* U: Estado Aseo OK/KO (manual select) */}
+                  <td className={tdi}>
+                    <select
+                      value={r.md.aseo_pct}
+                      onChange={e => updateField(r.mes, 'aseo_pct', Number(e.target.value))}
+                      className={`${selectCls} w-14`}
+                    >
+                      <option value={100}>OK</option>
+                      <option value={-100}>KO</option>
+                    </select>
+                  </td>
+                  {/* V: Importe Aseo (auto) */}
+                  <td className={`${td} ${clrEuro(r.imp_aseo)}`}>{euro(r.imp_aseo)}</td>
+                  {/* W: Acumulado Aseo (auto) */}
+                  <td className={`${td} ${clrEuro(r.acc_aseo)}`}>{euro(r.acc_aseo)}</td>
+
+                  {/* ── HORAS IMPRODUCTIVAS ── */}
+
+                  {/* X: H.Objetivo (manual number) */}
+                  <td className={tdi}>
+                    <input
+                      type="number" step="0.5" min="0"
+                      value={r.md.h_obj}
+                      onChange={e => updateField(r.mes, 'h_obj', parseFloat(e.target.value) || 0)}
+                      className={numCls}
+                    />
+                  </td>
+                  {/* Y: H.Invertidas (manual number) */}
+                  <td className={tdi}>
+                    <input
+                      type="number" step="0.5" min="0"
+                      value={r.md.h_inv}
+                      onChange={e => updateField(r.mes, 'h_inv', parseFloat(e.target.value) || 0)}
+                      className={numCls}
+                    />
+                  </td>
+                  {/* Z: Dif = Y − X (auto) */}
+                  <td className={`${td} ${r.h_dif > 0 ? 'text-red-600 font-semibold' : r.h_dif < 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                    {r.h_dif === 0 ? '—' : `${r.h_dif > 0 ? '+' : ''}${r.h_dif.toFixed(1)}h`}
+                  </td>
+                  {/* AA: % = Z/X (auto) */}
+                  <td className={`${td} text-slate-600`}>
+                    {r.md.h_obj > 0 ? `${r.h_pct.toFixed(0)}%` : '—'}
+                  </td>
+                  {/* AB: Penalización = MAX(Z,0) × 39 (auto) */}
+                  <td className={`${td} ${r.penalizacion > 0 ? 'text-red-600 font-semibold' : 'text-slate-400'}`}>
+                    {r.penalizacion > 0 ? `−${r.penalizacion.toFixed(0)} €` : '—'}
+                  </td>
+
+                  {/* ── TOTAL (AC) ── */}
+                  <td className={`${td} font-bold text-sm ${clrEuro(r.total)}`}>
+                    {euro(r.total)}
+                  </td>
                 </tr>
-              )}
+              );
+            })}
 
-              {/* TOTAL */}
-              <tr className="bg-slate-700 text-white">
-                <td className="px-3 py-3 font-bold text-base">TOTAL</td>
-                <td className="px-3 py-3" />
-                <td className={`px-3 py-3 text-right font-bold text-lg ${totalMes >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                  {fmt(totalMes)}
-                </td>
-                <td className={`px-3 py-3 text-right font-semibold ${accum.total >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                  {fmt(accum.total)}
-                </td>
-              </tr>
-
-            </tbody>
-          </table>
-        </div>
+            {/* Annual totals row */}
+            <tr className="bg-slate-800 text-white text-xs font-bold">
+              <td className="px-3 py-2 border border-slate-700 whitespace-nowrap">TOTAL ANUAL</td>
+              {/* Productividad */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_prod >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_prod)}</td>
+              <td className="border border-slate-700" />
+              {/* Control Documental */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_ctrl_doc >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_ctrl_doc)}</td>
+              <td className="border border-slate-700" />
+              {/* Control Visitas */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_ctrl_vis >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_ctrl_vis)}</td>
+              <td className="border border-slate-700" />
+              {/* Retorno */}
+              <td className="border border-slate-700" />
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_ret >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_ret)}</td>
+              <td className="border border-slate-700" />
+              {/* Herramientas */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_herr >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_herr)}</td>
+              <td className="border border-slate-700" />
+              {/* Vehículo */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_vehic >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_vehic)}</td>
+              <td className="border border-slate-700" />
+              {/* Aseo */}
+              <td className="border border-slate-700" />
+              <td className={`px-2 py-2 text-center border border-slate-700 ${ann.acc_aseo >= 0 ? 'text-green-300' : 'text-red-300'}`}>{euro(ann.acc_aseo)}</td>
+              <td className="border border-slate-700" />
+              {/* Horas Improductivas — 5 cols */}
+              <td className="border border-slate-700" />
+              <td className="border border-slate-700" />
+              <td className="border border-slate-700" />
+              <td className="border border-slate-700" />
+              <td className="border border-slate-700" />
+              {/* TOTAL ANUAL */}
+              <td className={`px-3 py-2 text-center border border-slate-700 text-base ${ann.acc_total >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                {euro(ann.acc_total)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      {/* ── Save Button ── */}
-      <div className="flex items-center justify-center gap-4">
-        <button
-          type="button"
-          onClick={handleSave}
-          className="bg-green-600 hover:bg-green-700 active:scale-95 text-white font-bold px-8 py-3 rounded-xl text-sm shadow-lg transition-all"
-        >
-          💾 Guardar — {MESES[mes - 1]} {año}
-        </button>
-        {saveMsg && (
-          <span className="text-green-700 font-semibold text-sm bg-green-100 px-3 py-1.5 rounded-lg animate-pulse">
-            {saveMsg}
-          </span>
-        )}
-      </div>
+      {/* ── RESUMEN INCENTIVOS ── */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
 
-      {/* ── Section A — Resumen Incentivos Anual ── */}
-      <div className="bg-slate-300 rounded-lg p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">
-            Sección A — Resumen Incentivos · {año}
-          </h3>
-          <div className="flex items-center gap-2">
-            <label className="text-slate-600 text-xs font-medium">Umbral mínimo</label>
+        {/* Header with KPI Referencia input */}
+        <div className="flex flex-wrap items-center gap-4 bg-gradient-to-r from-slate-700 to-slate-600 text-white px-4 py-2.5">
+          <span className="font-bold text-sm tracking-wide uppercase">Resumen Incentivos</span>
+          <div className="flex items-center gap-2 text-xs ml-auto">
+            <label className="text-slate-300 whitespace-nowrap">KPI Referencia (umbral):</label>
             <input
               type="number" step="1" min="0"
-              value={umbral}
-              onChange={e => setUmbral(parseFloat(e.target.value) || 0)}
-              className="w-24 bg-slate-100 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 text-center"
+              value={kpiRef}
+              onChange={e => updateKpiRef(parseFloat(e.target.value) || 0)}
+              className="w-20 bg-slate-800 border border-slate-500 rounded px-2 py-0.5 text-white text-center outline-none focus:ring-1 focus:ring-blue-400 text-xs"
             />
-            <span className="text-slate-500 text-xs">€</span>
+            <span className="text-slate-400">€</span>
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-lg mb-4">
-          <table className="min-w-full">
-            <thead className="bg-slate-600 text-slate-100 text-sm">
-              <tr>
-                <th className="px-3 py-2.5 text-left">MES</th>
-                <th className="px-3 py-2.5 text-right">IMPORTE €</th>
-                <th className="px-3 py-2.5 text-right">ACUMULADO €</th>
-                <th className="px-3 py-2.5 text-right">A COBRAR €</th>
-                <th className="px-3 py-2.5 text-right">ACUM. COBRAR €</th>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-600 text-white text-[11px] font-semibold uppercase tracking-wide">
+                <th className="px-3 py-2 text-left border border-slate-500 min-w-[100px]">MES</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[90px]">IMPORTE</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[90px]">ACUMULADO</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[110px]">Imp. a Cobrar</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[90px]">OBJETIVO</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[80px]">DIETAS</th>
+                <th className="px-3 py-2 text-right border border-slate-500 min-w-[80px]">H EXT</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200 text-sm">
-              {annualRows
-                .filter(row => row.stored !== null || row.mes === mes)
-                .map(row => {
-                  const isActive      = row.mes === mes;
-                  const hasData       = row.stored !== null;
-                  // For active unsaved month, preview current calculated total
-                  const displayImp    = hasData ? row.stored! : totalMes;
-                  const displayCobrar = Math.max(displayImp - umbral, 0);
+            <tbody>
+              {rows.map((r, i) => {
+                const isCurrent = r.mes === curMes;
+                const cobrar = Math.max(r.total - kpiRef, 0);
+                return (
+                  <tr key={r.mes} className={`${isCurrent ? 'bg-blue-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-slate-100/60 transition-colors`}>
+                    <td className={`px-3 py-1.5 border border-slate-200 font-medium ${isCurrent ? 'text-blue-700 font-bold' : 'text-slate-700'}`}>
+                      {MESES[r.mes - 1]}
+                      {isCurrent && <span className="ml-1 text-blue-400 text-[9px]">◀</span>}
+                    </td>
+                    {/* IMPORTE = TOTAL from monthly KPI (auto) */}
+                    <td className={`px-3 py-1.5 text-right border border-slate-200 ${clrEuro(r.total)}`}>
+                      {euro(r.total)}
+                    </td>
+                    {/* ACUMULADO = running sum of TOTAL (auto) */}
+                    <td className={`px-3 py-1.5 text-right border border-slate-200 ${clrEuro(r.acc_total)}`}>
+                      {euro(r.acc_total)}
+                    </td>
+                    {/* Importe a Cobrar = MAX(IMPORTE − kpiRef, 0) (auto) */}
+                    <td className={`px-3 py-1.5 text-right border border-slate-200 font-semibold ${cobrar > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      {cobrar > 0 ? euro(cobrar) : '—'}
+                    </td>
+                    {/* OBJETIVO (manual) */}
+                    <td className="px-1 py-1 border border-slate-200">
+                      <input
+                        type="number" step="1" min="0"
+                        value={r.md.objetivo}
+                        onChange={e => updateField(r.mes, 'objetivo', parseFloat(e.target.value) || 0)}
+                        className={`${numCls} w-16`}
+                      />
+                    </td>
+                    {/* DIETAS (manual) */}
+                    <td className="px-1 py-1 border border-slate-200">
+                      <input
+                        type="number" step="0.5" min="0"
+                        value={r.md.dietas}
+                        onChange={e => updateField(r.mes, 'dietas', parseFloat(e.target.value) || 0)}
+                        className={`${numCls} w-16`}
+                      />
+                    </td>
+                    {/* H EXT (manual) */}
+                    <td className="px-1 py-1 border border-slate-200">
+                      <input
+                        type="number" step="0.5" min="0"
+                        value={r.md.h_ext}
+                        onChange={e => updateField(r.mes, 'h_ext', parseFloat(e.target.value) || 0)}
+                        className={`${numCls} w-16`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
 
-                  return (
-                    <tr
-                      key={row.mes}
-                      className={
-                        isActive
-                          ? 'bg-blue-50 ring-2 ring-inset ring-blue-400 font-semibold'
-                          : 'hover:bg-gray-50'
-                      }
-                    >
-                      <td className="px-3 py-2 text-slate-800">
-                        {MESES[row.mes - 1]}
-                        {isActive && (
-                          <span className="ml-2 text-blue-500 text-xs font-normal">
-                            ← activo{!hasData ? ' (preview)' : ''}
-                          </span>
-                        )}
-                      </td>
-                      <td className={`px-3 py-2 text-right ${clr(displayImp)}`}>
-                        {fmt(displayImp)}{!hasData && isActive ? ' *' : ''}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-600">{fmt(row.acum)}</td>
-                      <td className={`px-3 py-2 text-right font-medium ${displayCobrar > 0 ? 'text-green-600' : 'text-slate-400'}`}>
-                        {fmt(displayCobrar)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-600">{fmt(row.acumCobrar)}</td>
-                    </tr>
-                  );
-                })}
-              {annualRows.every(r => r.stored === null) && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                    Sin datos guardados para {año}. Guarda el mes actual para comenzar.
-                  </td>
-                </tr>
-              )}
+              {/* TOTAL row — all 12 months */}
+              <tr className="bg-slate-700 text-white font-bold text-xs">
+                <td className="px-3 py-2 border border-slate-600">TOTAL</td>
+                <td className={`px-3 py-2 text-right border border-slate-600 ${resumen.total_importe >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                  {euro(resumen.total_importe)}
+                </td>
+                <td className="px-3 py-2 text-right border border-slate-600 text-slate-400">—</td>
+                <td className={`px-3 py-2 text-right border border-slate-600 ${resumen.total_cobrar > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
+                  {resumen.total_cobrar > 0 ? euro(resumen.total_cobrar) : '—'}
+                </td>
+                <td className="px-3 py-2 text-right border border-slate-600">{euro(resumen.total_objetivo)}</td>
+                <td className="px-3 py-2 text-right border border-slate-600">{euro(resumen.total_dietas)}</td>
+                <td className="px-3 py-2 text-right border border-slate-600">{euro(resumen.total_hext)}</td>
+              </tr>
+
+              {/* TOTAL(P) row — only months where IMPORTE > 0 */}
+              <tr className="bg-slate-600 text-white font-semibold text-xs">
+                <td className="px-3 py-2 border border-slate-500">TOTAL (P)</td>
+                <td className={`px-3 py-2 text-right border border-slate-500 ${resumen.totalp_importe >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                  {euro(resumen.totalp_importe)}
+                </td>
+                <td className="px-3 py-2 text-right border border-slate-500 text-slate-400">—</td>
+                <td className={`px-3 py-2 text-right border border-slate-500 ${resumen.totalp_cobrar > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
+                  {resumen.totalp_cobrar > 0 ? euro(resumen.totalp_cobrar) : '—'}
+                </td>
+                <td className="px-3 py-2 text-right border border-slate-500">{euro(resumen.totalp_objetivo)}</td>
+                <td className="px-3 py-2 text-right border border-slate-500 text-slate-400">—</td>
+                <td className="px-3 py-2 text-right border border-slate-500 text-slate-400">—</td>
+              </tr>
+
+              {/* % OBJETIVO row */}
+              <tr className="bg-emerald-700 text-white font-bold text-xs">
+                <td className="px-3 py-2 border border-emerald-600">% OBJETIVO</td>
+                <td className="px-3 py-2 text-right border border-emerald-600 text-emerald-200">
+                  {euro(resumen.total_cobrar)}
+                </td>
+                <td className="px-3 py-2 text-right border border-emerald-600 text-emerald-200">
+                  {resumen.totalp_objetivo > 0 ? `÷ ${euro(resumen.totalp_objetivo)}` : '—'}
+                </td>
+                <td className="px-3 py-2 text-right border border-emerald-600 text-xl font-black" colSpan={1}>
+                  {resumen.pct_objetivo !== null ? `${resumen.pct_objetivo.toFixed(1)}%` : '—'}
+                </td>
+                <td className="px-3 py-2 border border-emerald-600 text-emerald-300 text-[10px] italic" colSpan={3}>
+                  = Imp.a Cobrar total ÷ Objetivo (meses P)
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
-
-        {/* Dietas & H. Extras for the active month */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="bg-white rounded-lg p-3">
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              Dietas € — {MESES[mes - 1]} {año}
-            </label>
-            <input
-              type="number" step="0.01" min="0"
-              value={form.dietas}
-              onChange={e => set('dietas', parseFloat(e.target.value) || 0)}
-              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="bg-white rounded-lg p-3">
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">
-              H. Extras € — {MESES[mes - 1]} {año}
-            </label>
-            <input
-              type="number" step="0.01" min="0"
-              value={form.h_extras}
-              onChange={e => set('h_extras', parseFloat(e.target.value) || 0)}
-              className="w-full bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
       </div>
+
+      {/* ── Legend ── */}
+      <div className="flex flex-wrap items-center gap-5 text-xs text-slate-500 px-1">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-4 h-3.5 rounded bg-blue-50 border border-blue-200" />
+          Campo manual (editable)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-green-700 font-bold text-sm">+</span>
+          Valor positivo
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-red-600 font-bold text-sm">−</span>
+          Valor negativo o penalización
+        </span>
+        <span className="ml-auto text-slate-400 italic">Los cambios se guardan automáticamente</span>
+      </div>
+
+      {/* ── Reference summary ── */}
+      <details className="bg-white border border-slate-200 rounded-lg text-xs">
+        <summary className="px-4 py-2.5 cursor-pointer font-medium text-slate-600 hover:text-slate-800 select-none">
+          Ver tablas de referencia y fórmulas
+        </summary>
+        <div className="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1">Productividad (col C)</p>
+            <table className="w-full border-collapse">
+              <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">%Obj</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {[[80,25],[90,50],[95,75],[100,100],[105,100],[110,100],[120,100]].map(([p,v]) =>
+                  <tr key={p}><td className="px-2 py-0.5 text-slate-600">{p}%</td><td className="px-2 py-0.5 text-right text-green-700">{v} €</td></tr>
+                )}
+              </tbody>
+            </table>
+            <p className="mt-1 text-slate-400 italic">No se incluye en el TOTAL final</p>
+          </div>
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1">Control Documental (col F)</p>
+            <table className="w-full border-collapse">
+              <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">Puntos</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {[[-80,-25],[1,100],[10,100],[20,100],[30,100],[40,100],[50,75],[60,50],[70,25],[80,0]].map(([p,v]) =>
+                  <tr key={p}><td className="px-2 py-0.5 text-slate-600">{p}</td><td className={`px-2 py-0.5 text-right ${v > 0 ? 'text-green-700' : v < 0 ? 'text-red-600' : 'text-slate-400'}`}>{v} €</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="font-semibold text-slate-700 mb-1">Control Visitas (col I)</p>
+              <table className="w-full border-collapse">
+                <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">Estado</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr><td className="px-2 py-0.5 text-slate-600">OK (100)</td><td className="px-2 py-0.5 text-right text-green-700">25 €</td></tr>
+                  <tr><td className="px-2 py-0.5 text-slate-600">KO (−100)</td><td className="px-2 py-0.5 text-right text-red-600">−25 €</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-700 mb-1">Herramientas · Vehículo · Aseo</p>
+              <table className="w-full border-collapse">
+                <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">Ítem</th><th className="px-2 py-1 text-right">OK</th><th className="px-2 py-1 text-right">KO</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr><td className="px-2 py-0.5 text-slate-600">Herramientas</td><td className="px-2 py-0.5 text-right text-green-700">5 €</td><td className="px-2 py-0.5 text-right text-slate-400">0 €</td></tr>
+                  <tr><td className="px-2 py-0.5 text-slate-600">Vehículo</td><td className="px-2 py-0.5 text-right text-green-700">10 €</td><td className="px-2 py-0.5 text-right text-slate-400">0 €</td></tr>
+                  <tr><td className="px-2 py-0.5 text-slate-600">Aseo personal</td><td className="px-2 py-0.5 text-right text-green-700">10 €</td><td className="px-2 py-0.5 text-right text-slate-400">0 €</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1">Retorno (col M) — %P − %R</p>
+            <table className="w-full border-collapse">
+              <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">%P−%R</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {[['≥ 100',100],['≥ 95',75],['≥ 90',50],['≥ 80',25],['< 80',0]].map(([l,v]) =>
+                  <tr key={String(l)}><td className="px-2 py-0.5 text-slate-600">{l}</td><td className={`px-2 py-0.5 text-right ${Number(v) > 0 ? 'text-green-700' : 'text-slate-400'}`}>{v} €</td></tr>
+                )}
+              </tbody>
+            </table>
+            <p className="mt-1 text-slate-400 italic">Mismo umbral que Productividad</p>
+          </div>
+
+          <div className="sm:col-span-2">
+            <p className="font-semibold text-slate-700 mb-1">Horas Improductivas y Penalización</p>
+            <div className="space-y-1 text-slate-600">
+              <p>Dif = H.Invertidas − H.Objetivo</p>
+              <p>% = Dif ÷ H.Objetivo × 100</p>
+              <p>Penalización = MAX(Dif, 0) × <strong>{PENALTY_RATE} €/h</strong></p>
+            </div>
+            <p className="mt-2 font-semibold text-slate-700">TOTAL (col AC)</p>
+            <p className="text-slate-600">= CtrlDoc + Visitas + Retorno + Herr + Vehículo + Aseo − Penalización</p>
+            <p className="mt-0.5 text-slate-400 italic">Productividad se muestra pero <strong>no</strong> se suma al total mensual</p>
+          </div>
+
+        </div>
+      </details>
 
     </div>
   );

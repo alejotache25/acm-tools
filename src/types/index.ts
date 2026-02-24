@@ -58,6 +58,8 @@ export interface ControlCalidad {
   operario: string;
   cliente: string;
   descripcion: string;
+  resolucion?: string;
+  marca?: string;
   tipo_cq: string;
   horas: number;
   importe_h: number;
@@ -76,6 +78,8 @@ export interface Visita {
   ot?: number | null;
   tipo_visita: string;
   ok_visita: string;
+  cliente?: string;
+  observaciones?: string;
   jefe_id: string;
   sync_pending?: boolean;
   created_at: string;
@@ -119,6 +123,7 @@ export interface Issus {
   id_issus?: number | null;
   tipo: string;
   descripcion: string;
+  estado?: string;
   jefe_id: string;
   sync_pending?: boolean;
   created_at: string;
