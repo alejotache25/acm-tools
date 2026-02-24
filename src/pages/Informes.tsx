@@ -54,9 +54,12 @@ export default function Informes() {
 
   // Email config state
   const [showEmailConfig, setShowEmailConfig] = useState(false);
-  const [emailMap, setEmailMap]               = useState<Record<string, string>>({});
+  const [jefeEmail, setJefeEmail]             = useState('');
+  const [emailActivo, setEmailActivo]         = useState(false);
   const [savingEmail, setSavingEmail]         = useState(false);
   const [emailSaved, setEmailSaved]           = useState(false);
+  // Legacy — kept to avoid unused-variable warning
+  const [emailMap]                            = useState<Record<string, string>>({});
 
   // Load operarios
   useEffect(() => {
@@ -78,21 +81,21 @@ export default function Informes() {
     }
   }, [user]);
 
-  // Load email config
+  // Load jefe email config
   useEffect(() => {
-    if (!operarios.length) return;
+    if (!user) return;
     supabase
       .from('email_config')
-      .select('operario_nombre, email')
-      .in('operario_nombre', operarios)
+      .select('email, activo')
+      .eq('jefe_id', user.id)
+      .maybeSingle()
       .then(({ data }) => {
-        const map: Record<string, string> = {};
-        (data || []).forEach((r: { operario_nombre: string; email: string }) => {
-          map[r.operario_nombre] = r.email;
-        });
-        setEmailMap(map);
+        if (data) {
+          setJefeEmail(data.email ?? '');
+          setEmailActivo(data.activo ?? false);
+        }
       });
-  }, [operarios]);
+  }, [user]);
 
   const handleGenerarPdf = async () => {
     if (!operario) return;
@@ -135,15 +138,15 @@ export default function Informes() {
     }
   };
 
-  const handleSaveEmail = async (op: string, email: string) => {
+  const handleSaveEmail = async () => {
+    if (!user || !jefeEmail.trim()) return;
     setSavingEmail(true);
     const { error: upsertErr } = await supabase
       .from('email_config')
-      .upsert({ operario_nombre: op, email, activo: true }, { onConflict: 'operario_nombre' });
+      .upsert({ jefe_id: user.id, email: jefeEmail.trim(), activo: emailActivo }, { onConflict: 'jefe_id' });
     if (!upsertErr) {
-      setEmailMap(prev => ({ ...prev, [op]: email }));
       setEmailSaved(true);
-      setTimeout(() => setEmailSaved(false), 2000);
+      setTimeout(() => setEmailSaved(false), 3000);
     }
     setSavingEmail(false);
   };
@@ -259,44 +262,67 @@ export default function Informes() {
 
         {showEmailConfig && (
           <div className="px-6 pb-6 border-t border-slate-100">
-            <p className="text-sm text-slate-500 mt-3 mb-4">
-              El sistema enviará automáticamente el informe del mes vencido <strong>el día 1 de cada mes</strong> al email configurado por cada agente.
-              Esta función requiere activar la Edge Function en Supabase (ver instrucciones en README).
+            <p className="text-sm text-slate-500 mt-4 mb-4">
+              El <strong>día 1 de cada mes</strong> recibirás automáticamente <strong>un email por cada agente</strong> con
+              el informe del mes anterior. Configura aquí tu email de recepción.
             </p>
 
-            <div className="space-y-3">
-              {operarios.map(op => (
-                <div key={op} className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-slate-700 w-36 shrink-0 truncate">{op}</span>
-                  <input
-                    type="email"
-                    placeholder="email@ejemplo.com"
-                    value={emailMap[op] ?? ''}
-                    onChange={e => setEmailMap(prev => ({ ...prev, [op]: e.target.value }))}
-                    className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
-                  />
-                  <button
-                    onClick={() => handleSaveEmail(op, emailMap[op] ?? '')}
-                    disabled={savingEmail}
-                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5 font-medium transition-all disabled:opacity-50"
-                  >
-                    {savingEmail ? '...' : 'Guardar'}
-                  </button>
-                </div>
-              ))}
+            {/* Jefe email input */}
+            <div className="flex items-center gap-3 mb-3">
+              <EnvelopeIcon className="h-5 w-5 text-blue-500 shrink-0" />
+              <input
+                type="email"
+                placeholder="tu@email.com"
+                value={jefeEmail}
+                onChange={e => setJefeEmail(e.target.value)}
+                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
+              />
             </div>
 
+            {/* Active toggle */}
+            <label className="flex items-center gap-3 cursor-pointer mb-4">
+              <div
+                onClick={() => setEmailActivo(v => !v)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${emailActivo ? 'bg-blue-600' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${emailActivo ? 'translate-x-5' : ''}`} />
+              </div>
+              <span className="text-sm text-slate-600">
+                {emailActivo ? '✓ Envío automático activado' : 'Envío automático desactivado'}
+              </span>
+            </label>
+
+            <button
+              onClick={handleSaveEmail}
+              disabled={savingEmail || !jefeEmail.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-medium rounded-lg py-2 text-sm transition-all"
+            >
+              {savingEmail ? 'Guardando...' : 'Guardar configuración'}
+            </button>
+
             {emailSaved && (
-              <p className="mt-3 text-sm text-green-600 font-medium">✓ Email guardado correctamente.</p>
+              <p className="mt-3 text-sm text-green-600 font-medium">✓ Configuración guardada. Recibirás los informes el día 1 de cada mes.</p>
             )}
 
-            <div className="mt-5 bg-blue-50 rounded-lg p-4">
-              <p className="text-xs text-blue-700 font-semibold mb-1">Para activar el envío automático:</p>
-              <ol className="text-xs text-blue-600 space-y-1 list-decimal list-inside">
-                <li>Despliega la Edge Function <code className="bg-blue-100 px-1 rounded">monthly-kpi-email</code> en Supabase</li>
-                <li>Configura las variables de entorno: <code className="bg-blue-100 px-1 rounded">RESEND_API_KEY</code></li>
-                <li>Activa pg_cron en Supabase con: <code className="bg-blue-100 px-1 rounded">0 9 1 * *</code> (1º de cada mes a las 9:00)</li>
-                <li>Los informes se enviarán automáticamente con los datos del mes anterior</li>
+            {/* Agents preview */}
+            {operarios.length > 0 && (
+              <div className="mt-4 bg-slate-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-slate-600 mb-2">Recibirás informes de {operarios.length} agente{operarios.length > 1 ? 's' : ''}:</p>
+                <div className="flex flex-wrap gap-2">
+                  {operarios.map(op => (
+                    <span key={op} className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-1">{op}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-amber-700 mb-1">⚠️ Requiere configuración en Supabase (ver paso a paso):</p>
+              <ol className="text-xs text-amber-600 space-y-0.5 list-decimal list-inside">
+                <li>Crear tabla <code className="bg-amber-100 px-1 rounded">email_config</code> en Supabase</li>
+                <li>Desplegar Edge Function <code className="bg-amber-100 px-1 rounded">monthly-kpi-email</code></li>
+                <li>Añadir secret <code className="bg-amber-100 px-1 rounded">RESEND_API_KEY</code></li>
+                <li>Activar pg_cron: <code className="bg-amber-100 px-1 rounded">0 9 1 * *</code></li>
               </ol>
             </div>
           </div>

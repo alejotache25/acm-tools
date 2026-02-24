@@ -1,26 +1,35 @@
 /**
  * monthly-kpi-email — Supabase Edge Function
  *
- * Sends the KPI report for the previous month to each agent's configured email.
- * Triggered by Supabase pg_cron on the 1st of each month at 09:00.
+ * El día 1 de cada mes a las 09:00 envía al JEFE un email por cada uno de sus
+ * agentes asignados, con el informe del mes anterior.
  *
- * Setup in Supabase SQL Editor:
+ * Flujo:
+ *   1. Lee email_config (jefe_id + email + activo=true)
+ *   2. Para cada jefe, lee jefe_operario (sus agentes)
+ *   3. Para cada agente consulta Supabase del mes anterior
+ *   4. Envía un email por agente al jefe via Resend
+ *
+ * Activar con pg_cron (Supabase SQL Editor):
+ *
  *   SELECT cron.schedule(
  *     'monthly-kpi-email',
  *     '0 9 1 * *',
  *     $$
  *       SELECT net.http_post(
  *         url := 'https://<PROJECT_REF>.supabase.co/functions/v1/monthly-kpi-email',
- *         headers := '{"Authorization": "Bearer <SERVICE_ROLE_KEY>", "Content-Type": "application/json"}',
+ *         headers := '{"Authorization": "Bearer <SERVICE_ROLE_KEY>",
+ *                      "Content-Type": "application/json"}',
  *         body := '{}'
  *       );
  *     $$
  *   );
  *
- * Required env vars (set in Supabase Dashboard → Edge Functions → Secrets):
- *   RESEND_API_KEY       — Resend.com API key
- *   SUPABASE_URL         — Auto-injected by Supabase
- *   SUPABASE_SERVICE_ROLE_KEY — Auto-injected by Supabase
+ * Variables de entorno requeridas (Supabase Dashboard → Edge Functions → Secrets):
+ *   RESEND_API_KEY           — clave de API de resend.com
+ *   SUPABASE_URL             — inyectada automáticamente
+ *   SUPABASE_SERVICE_ROLE_KEY — inyectada automáticamente
+ *   FROM_EMAIL               — ej: informes@tudominio.com (o onboarding@resend.dev en dev)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -30,178 +39,132 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface EmailConfig {
-  operario_nombre: string;
+  jefe_id: string;
   email: string;
-  activo: boolean;
 }
 
-interface IncidenciaRow {
-  fecha: string;
-  incidencia: string;
-  puntos: number;
-  observaciones?: string;
+interface JefeOperario {
+  operario_nombre: string;
 }
 
-interface ControlCalidadRow {
-  fecha: string;
-  tipo_cq: string;
-  horas: number;
-  total_cq: number;
-  descripcion: string;
-}
+interface IncRow { fecha: string; incidencia: string; puntos: number; observaciones?: string; }
+interface CCRow  { fecha: string; tipo_cq: string; horas: number; total_cq: number; descripcion: string; }
+interface LimpRow { vestuario_h: number; limpieza_vh: number; seguridad_t: number; herramientas: number; }
+interface HIRow  { h_recg_mat: number; h_reunion: number; h_mant_furgos: number; h_mant_instalaciones: number; h_formacion: number; consumibles_e: number; }
 
-interface LimpiezaRow {
-  vestuario_h: number;
-  limpieza_vh: number;
-  seguridad_t: number;
-  herramientas: number;
-}
+// ─── HTML builder ─────────────────────────────────────────────────────────────
 
-interface HorasImprodRow {
-  h_recg_mat: number;
-  h_reunion: number;
-  h_mant_furgos: number;
-  h_mant_instalaciones: number;
-  h_formacion: number;
-  consumibles_e: number;
-}
-
-// Build HTML email body for one agent
-function buildEmailHtml(
+function buildHtml(
   operario: string,
   mes: number,
   año: number,
-  incidencias: IncidenciaRow[],
-  controlCalidad: ControlCalidadRow[],
-  limpieza: LimpiezaRow[],
-  horasImprod: HorasImprodRow[],
+  inc: IncRow[],
+  cc: CCRow[],
+  limp: LimpRow[],
+  hi: HIRow[],
 ): string {
-  const mesNombre = MESES[mes - 1];
-  const totalInc = incidencias.length;
-  const puntosInc = incidencias.reduce((s, r) => s + r.puntos, 0);
-  const retornos = controlCalidad.filter(r => r.tipo_cq === 'RETORNO ATRIBUIBLE');
-  const totalRet = retornos.length;
-  const totalHorasImprod = horasImprod.reduce(
-    (s, r) => s + r.h_recg_mat + r.h_reunion + r.h_mant_furgos + r.h_mant_instalaciones + r.h_formacion,
-    0
-  );
-  const avgLimp = limpieza.length > 0
-    ? (limpieza.reduce((s, r) => s + (r.vestuario_h + r.limpieza_vh + r.seguridad_t + r.herramientas) / 4, 0) / limpieza.length).toFixed(2)
+  const mesNombre    = MESES[mes - 1];
+  const totalInc     = inc.length;
+  const puntosInc    = inc.reduce((s, r) => s + r.puntos, 0);
+  const retornos     = cc.filter(r => r.tipo_cq === 'RETORNO ATRIBUIBLE');
+  const totalRet     = retornos.length;
+  const totalHI      = hi.reduce((s, r) => s + r.h_recg_mat + r.h_reunion + r.h_mant_furgos + r.h_mant_instalaciones + r.h_formacion, 0);
+  const avgLimp      = limp.length > 0
+    ? (limp.reduce((s, r) => s + (r.vestuario_h + r.limpieza_vh + r.seguridad_t + r.herramientas) / 4, 0) / limp.length).toFixed(2)
     : 'N/A';
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f6fa; margin: 0; padding: 0; }
-    .wrapper { max-width: 680px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
-    .header { background: linear-gradient(135deg, #1e3c78, #0066b2); padding: 28px 32px; text-align: center; }
-    .header img { height: 40px; margin-bottom: 10px; }
-    .header h1 { color: white; font-size: 20px; margin: 0 0 4px; }
-    .header p { color: #b0c8e8; font-size: 13px; margin: 0; }
-    .content { padding: 28px 32px; }
-    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
-    .kpi-card { background: #f0f5ff; border: 1px solid #d0e0f8; border-radius: 8px; padding: 14px; text-align: center; }
-    .kpi-card .val { font-size: 22px; font-weight: bold; color: #1e3c78; }
-    .kpi-card .lbl { font-size: 11px; color: #666; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
-    th { background: #1e3c78; color: white; padding: 8px 10px; text-align: left; }
-    td { padding: 7px 10px; border-bottom: 1px solid #e8ecf4; }
-    tr:nth-child(even) td { background: #f5f8ff; }
-    .section-title { font-size: 14px; font-weight: bold; color: #1e3c78; margin: 20px 0 8px; border-left: 4px solid #0066b2; padding-left: 8px; }
-    .analysis { background: #fffbe6; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 4px; font-size: 12px; color: #555; margin: 10px 0; }
-    .footer { background: #f8faff; border-top: 1px solid #e0e8f4; padding: 16px 32px; text-align: right; font-size: 11px; color: #888; }
-    .no-data { color: #aaa; font-style: italic; text-align: center; padding: 12px; }
-  </style>
-</head>
-<body>
-<div class="wrapper">
-  <div class="header">
-    <img src="https://i.imgur.com/FIay1SB.png" alt="ACM Logo" />
-    <h1>INFORME MENSUAL DE KPI'S</h1>
-    <p>TÉCNICO: ${operario.toUpperCase()} &nbsp;·&nbsp; MES: ${mesNombre} ${año}</p>
-  </div>
-  <div class="content">
+  const cardColor = (ok: boolean) => ok ? '#e6f4ea' : '#fce8e6';
+  const valColor  = (ok: boolean) => ok ? '#1a7340' : '#c5221f';
 
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="val">${totalInc}</div>
-        <div class="lbl">Incidencias Documentales</div>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<style>
+  body{font-family:Arial,sans-serif;background:#f0f4fa;margin:0;padding:20px}
+  .wrap{max-width:660px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+  .hdr{background:linear-gradient(135deg,#0d2f6e,#1565c0);padding:24px 32px;text-align:center}
+  .hdr img{height:38px;margin-bottom:8px}
+  .hdr h1{color:#fff;font-size:18px;margin:0 0 4px}
+  .hdr p{color:#90caf9;font-size:12px;margin:0}
+  .body{padding:24px 32px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+  .card{border-radius:8px;padding:14px;text-align:center}
+  .card .v{font-size:22px;font-weight:700}
+  .card .l{font-size:11px;color:#666;margin-top:2px}
+  .sec{font-size:13px;font-weight:700;color:#0d2f6e;margin:18px 0 6px;border-left:4px solid #1565c0;padding-left:8px}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+  th{background:#1565c0;color:#fff;padding:7px 9px;text-align:left}
+  td{padding:6px 9px;border-bottom:1px solid #e8ecf4}
+  tr:nth-child(even) td{background:#f5f8ff}
+  .note{color:#aaa;font-style:italic;text-align:center;padding:10px;font-size:12px}
+  .ana{background:#fffde7;border-left:4px solid #f9a825;padding:9px 13px;border-radius:4px;font-size:11px;color:#555;margin:8px 0}
+  .ftr{background:#f5f8ff;border-top:1px solid #dde6f4;padding:14px 32px;text-align:right;font-size:11px;color:#888}
+</style></head><body>
+<div class="wrap">
+  <div class="hdr">
+    <img src="https://i.imgur.com/FIay1SB.png" alt="ACM"/>
+    <h1>INFORME MENSUAL DE KPI'S</h1>
+    <p>TÉCNICO: ${operario.toUpperCase()} &nbsp;·&nbsp; ${mesNombre.toUpperCase()} ${año}</p>
+  </div>
+  <div class="body">
+    <div class="grid">
+      <div class="card" style="background:${cardColor(totalInc===0)}">
+        <div class="v" style="color:${valColor(totalInc===0)}">${totalInc}</div>
+        <div class="l">Incidencias documentales</div>
       </div>
-      <div class="kpi-card">
-        <div class="val">${puntosInc}</div>
-        <div class="lbl">Puntos de Penalización</div>
+      <div class="card" style="background:${cardColor(puntosInc===0)}">
+        <div class="v" style="color:${valColor(puntosInc===0)}">${puntosInc}</div>
+        <div class="l">Puntos de penalización</div>
       </div>
-      <div class="kpi-card">
-        <div class="val">${totalRet}</div>
-        <div class="lbl">Retornos Atribuibles</div>
+      <div class="card" style="background:${cardColor(totalRet===0)}">
+        <div class="v" style="color:${valColor(totalRet===0)}">${totalRet}</div>
+        <div class="l">Retornos atribuibles</div>
       </div>
-      <div class="kpi-card">
-        <div class="val">${avgLimp === 'N/A' ? 'N/A' : `${avgLimp}/10`}</div>
-        <div class="lbl">Promedio Limpieza</div>
+      <div class="card" style="background:#e8f0fe">
+        <div class="v" style="color:#1a3c8e">${avgLimp === 'N/A' ? 'N/A' : avgLimp + '/10'}</div>
+        <div class="l">Promedio limpieza</div>
       </div>
     </div>
 
-    <!-- Control Documental -->
-    <div class="section-title">1. Control Documental</div>
-    ${incidencias.length > 0 ? `
+    <div class="sec">Control Documental</div>
+    ${inc.length > 0 ? `
     <table>
       <tr><th>Fecha</th><th>Incidencia</th><th>Puntos</th><th>Observaciones</th></tr>
-      ${incidencias.map(r => `<tr><td>${r.fecha}</td><td>${r.incidencia}</td><td>${r.puntos}</td><td>${r.observaciones || ''}</td></tr>`).join('')}
-    </table>` : `<p class="no-data">Sin incidencias documentales este mes.</p>`}
-    <div class="analysis">
-      ${totalInc === 0
-        ? `${operario} no ha registrado incidencias documentales. Cumplimiento óptimo.`
-        : `${totalInc} incidencias registradas con ${puntosInc} puntos de penalización.`}
-    </div>
+      ${inc.map(r=>`<tr><td>${r.fecha}</td><td>${r.incidencia}</td><td>${r.puntos}</td><td>${r.observaciones||''}</td></tr>`).join('')}
+    </table>` : `<p class="note">Sin incidencias documentales este mes.</p>`}
+    <div class="ana">${totalInc===0 ? `${operario} no registró incidencias documentales. Cumplimiento óptimo.` : `${totalInc} incidencias — ${puntosInc} puntos de penalización.`}</div>
 
-    <!-- Control Calidad / Retornos -->
-    <div class="section-title">2. Retornos Atribuibles</div>
+    <div class="sec">Retornos Atribuibles</div>
     ${retornos.length > 0 ? `
     <table>
       <tr><th>Fecha</th><th>Tipo</th><th>Horas</th><th>Descripción</th></tr>
-      ${retornos.map(r => `<tr><td>${r.fecha}</td><td>${r.tipo_cq}</td><td>${r.horas}</td><td>${r.descripcion}</td></tr>`).join('')}
-    </table>` : `<p class="no-data">Sin retornos atribuibles este mes.</p>`}
-    <div class="analysis">
-      ${retornos.length === 0 ? 'Alta calidad en la ejecución. Sin retornos.' : `${retornos.length} retornos registrados. Revisar causas.`}
-    </div>
+      ${retornos.map(r=>`<tr><td>${r.fecha}</td><td>${r.tipo_cq}</td><td>${r.horas}</td><td>${r.descripcion}</td></tr>`).join('')}
+    </table>` : `<p class="note">Sin retornos atribuibles este mes.</p>`}
+    <div class="ana">${totalRet===0 ? 'Alta calidad en la ejecución. Sin retornos.' : `${totalRet} retornos registrados. Revisar causas.`}</div>
 
-    <!-- Horas Improductivas -->
-    <div class="section-title">3. Horas Improductivas — Total: ${totalHorasImprod}h</div>
-    ${horasImprod.length > 0 ? `
+    <div class="sec">Horas Improductivas — Total: ${totalHI}h</div>
+    ${hi.length > 0 ? `
     <table>
-      <tr><th>Recog. Mat.</th><th>Reunión</th><th>Mant. Furgos</th><th>Mant. Inst.</th><th>Formación</th><th>Consumibles</th></tr>
-      ${horasImprod.map(r => `<tr>
-        <td>${r.h_recg_mat}h</td><td>${r.h_reunion}h</td><td>${r.h_mant_furgos}h</td>
-        <td>${r.h_mant_instalaciones}h</td><td>${r.h_formacion}h</td><td>${r.consumibles_e}€</td>
-      </tr>`).join('')}
-    </table>` : `<p class="no-data">Sin horas improductivas registradas.</p>`}
+      <tr><th>Recog. Mat.</th><th>Reunión</th><th>Mant. Furgos</th><th>Formación</th><th>Consumibles</th></tr>
+      ${hi.map(r=>`<tr><td>${r.h_recg_mat}h</td><td>${r.h_reunion}h</td><td>${r.h_mant_furgos}h</td><td>${r.h_formacion}h</td><td>${r.consumibles_e}€</td></tr>`).join('')}
+    </table>` : `<p class="note">Sin horas improductivas registradas.</p>`}
 
-    <!-- Limpieza -->
-    <div class="section-title">4. Control Limpieza — Promedio: ${avgLimp}</div>
-    ${limpieza.length > 0 ? `
+    <div class="sec">Control Limpieza — Promedio: ${avgLimp}</div>
+    ${limp.length > 0 ? `
     <table>
-      <tr><th>Vestuario/Higiene</th><th>Limpieza VH</th><th>Seguridad T.</th><th>Herramientas</th><th>Promedio</th></tr>
-      ${limpieza.map(r => {
-        const avg = ((r.vestuario_h + r.limpieza_vh + r.seguridad_t + r.herramientas) / 4).toFixed(2);
-        return `<tr><td>${r.vestuario_h}</td><td>${r.limpieza_vh}</td><td>${r.seguridad_t}</td><td>${r.herramientas}</td><td><strong>${avg}</strong></td></tr>`;
-      }).join('')}
-    </table>` : `<p class="no-data">Sin registros de limpieza este mes.</p>`}
+      <tr><th>Vestuario</th><th>Limpieza VH</th><th>Seguridad</th><th>Herramientas</th><th>Promedio</th></tr>
+      ${limp.map(r=>{const a=((r.vestuario_h+r.limpieza_vh+r.seguridad_t+r.herramientas)/4).toFixed(2);return`<tr><td>${r.vestuario_h}</td><td>${r.limpieza_vh}</td><td>${r.seguridad_t}</td><td>${r.herramientas}</td><td><b>${a}</b></td></tr>`;}).join('')}
+    </table>` : `<p class="note">Sin registros de limpieza.</p>`}
 
-    <div class="analysis">
-      Este informe fue generado automáticamente el día 1 de ${MESES[new Date().getMonth()]} ${new Date().getFullYear()} por ACM Tools.
-      Para el informe completo en PDF, accede a la app y descárgalo desde la sección Informes.
+    <div class="ana" style="margin-top:16px">
+      Informe generado automáticamente el 1 de ${MESES[new Date().getMonth()]} ${new Date().getFullYear()}.
+      Para el informe completo en PDF accede a ACM Tools → Informes.
     </div>
   </div>
-  <div class="footer">
-    Director ACM tools &nbsp;·&nbsp; Lluis Diaz
-  </div>
+  <div class="ftr">Director ACM tools &nbsp;·&nbsp; Lluis Diaz</div>
 </div>
-</body>
-</html>`;
+</body></html>`;
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -209,73 +172,81 @@ function buildEmailHtml(
 Deno.serve(async (_req: Request) => {
   const supabaseUrl  = Deno.env.get('SUPABASE_URL')!;
   const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
+  const resendKey    = Deno.env.get('RESEND_API_KEY');
+  const fromEmail    = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev';
 
-  if (!resendApiKey) {
-    return new Response(JSON.stringify({ error: 'RESEND_API_KEY not configured' }), { status: 500 });
+  if (!resendKey) {
+    return new Response(JSON.stringify({ error: 'RESEND_API_KEY not set' }), { status: 500 });
   }
 
   const db = createClient(supabaseUrl, serviceKey);
 
-  // Calculate previous month
-  const now = new Date();
+  // Previous month
+  const now      = new Date();
   const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const mes  = prevDate.getMonth() + 1;  // 1-12
-  const año  = prevDate.getFullYear();
-  const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
-  const endDate   = new Date(año, mes, 0).toISOString().split('T')[0];
+  const mes      = prevDate.getMonth() + 1;
+  const año      = prevDate.getFullYear();
+  const start    = `${año}-${String(mes).padStart(2,'0')}-01`;
+  const end      = new Date(año, mes, 0).toISOString().split('T')[0];
 
-  // Get all active email configs
-  const { data: configs, error: cfgErr } = await db
+  // 1. Get all active jefe email configs
+  const { data: configs } = await db
     .from('email_config')
-    .select('operario_nombre, email, activo')
+    .select('jefe_id, email')
     .eq('activo', true);
 
-  if (cfgErr || !configs?.length) {
-    return new Response(JSON.stringify({ sent: 0, message: 'No active email configs found' }), { status: 200 });
+  if (!configs?.length) {
+    return new Response(JSON.stringify({ sent: 0, message: 'No active configs' }));
   }
 
-  const results: Array<{ operario: string; status: string }> = [];
+  const results: { jefe: string; operario: string; status: string }[] = [];
 
   for (const cfg of configs as EmailConfig[]) {
-    const { operario_nombre: operario, email } = cfg;
+    // 2. Get this jefe's agents
+    const { data: asignados } = await db
+      .from('jefe_operario')
+      .select('operario_nombre')
+      .eq('jefe_id', cfg.jefe_id);
 
-    // Fetch Supabase data for this agent
-    const [incRes, ccRes, limpRes, hiRes] = await Promise.all([
-      db.from('incidencias').select('fecha,incidencia,puntos,observaciones').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate),
-      db.from('control_calidad').select('fecha,tipo_cq,horas,total_cq,descripcion').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate),
-      db.from('limpieza').select('vestuario_h,limpieza_vh,seguridad_t,herramientas').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate),
-      db.from('horas_improductivas').select('h_recg_mat,h_reunion,h_mant_furgos,h_mant_instalaciones,h_formacion,consumibles_e').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate),
-    ]);
+    if (!asignados?.length) continue;
 
-    const html = buildEmailHtml(
-      operario, mes, año,
-      (incRes.data  || []) as IncidenciaRow[],
-      (ccRes.data   || []) as ControlCalidadRow[],
-      (limpRes.data || []) as LimpiezaRow[],
-      (hiRes.data   || []) as HorasImprodRow[],
-    );
+    for (const row of asignados as JefeOperario[]) {
+      const op = row.operario_nombre;
 
-    // Send via Resend
-    const sendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'ACM Tools <informes@acmtools.com>',
-        to: [email],
-        subject: `Informe KPI — ${operario} — ${MESES[mes - 1]} ${año}`,
-        html,
-      }),
-    });
+      // 3. Fetch Supabase data for this agent in the previous month
+      const [incRes, ccRes, limpRes, hiRes] = await Promise.all([
+        db.from('incidencias').select('fecha,incidencia,puntos,observaciones').eq('operario', op).gte('fecha', start).lte('fecha', end),
+        db.from('control_calidad').select('fecha,tipo_cq,horas,total_cq,descripcion').eq('operario', op).gte('fecha', start).lte('fecha', end),
+        db.from('limpieza').select('vestuario_h,limpieza_vh,seguridad_t,herramientas').eq('operario', op).gte('fecha', start).lte('fecha', end),
+        db.from('horas_improductivas').select('h_recg_mat,h_reunion,h_mant_furgos,h_mant_instalaciones,h_formacion,consumibles_e').eq('operario', op).gte('fecha', start).lte('fecha', end),
+      ]);
 
-    results.push({ operario, status: sendRes.ok ? 'sent' : `error:${sendRes.status}` });
+      const html = buildHtml(
+        op, mes, año,
+        (incRes.data  || []) as IncRow[],
+        (ccRes.data   || []) as CCRow[],
+        (limpRes.data || []) as LimpRow[],
+        (hiRes.data   || []) as HIRow[],
+      );
+
+      // 4. Send via Resend
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `ACM Tools <${fromEmail}>`,
+          to: [cfg.email],
+          subject: `📊 Informe KPI — ${op} — ${MESES[mes-1]} ${año}`,
+          html,
+        }),
+      });
+
+      results.push({ jefe: cfg.jefe_id, operario: op, status: res.ok ? 'sent' : `error:${res.status}` });
+    }
   }
 
-  return new Response(JSON.stringify({ sent: results.filter(r => r.status === 'sent').length, results }), {
+  const sent = results.filter(r => r.status === 'sent').length;
+  return new Response(JSON.stringify({ sent, total: results.length, results }), {
     headers: { 'Content-Type': 'application/json' },
-    status: 200,
   });
 });
