@@ -5,6 +5,7 @@ import {
   ClipboardDocumentListIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
+  DocumentArrowDownIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -34,6 +35,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const jefeLinks = [
     { to: '/seleccionar-operario', Icon: UserGroupIcon, label: 'Operarios' },
     { to: '/mis-registros', Icon: ClipboardDocumentListIcon, label: 'Mis Registros' },
+    { to: '/informes', Icon: DocumentArrowDownIcon, label: 'Informes' },
   ];
   const adminLinks = [
     { to: '/admin', Icon: Cog6ToothIcon, label: 'Admin' },

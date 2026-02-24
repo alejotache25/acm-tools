@@ -8,6 +8,7 @@ import Admin from './pages/Admin';
 import SeleccionarOperario from './pages/SeleccionarOperario';
 import Operario from './pages/Operario';
 import MisRegistros from './pages/MisRegistros';
+import Informes from './pages/Informes';
 
 const SYNC_TABLES = [
   { table: 'incidencias',         fuente: '01_DB_INCIDENCIAS' },
@@ -59,6 +60,12 @@ function AppRoutes() {
       <Route path="/mis-registros" element={
         <PrivateRoute>
           <Layout><MisRegistros /></Layout>
+        </PrivateRoute>
+      } />
+
+      <Route path="/informes" element={
+        <PrivateRoute>
+          <Layout><Informes /></Layout>
         </PrivateRoute>
       } />
 
