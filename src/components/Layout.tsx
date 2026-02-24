@@ -44,10 +44,12 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-gradient-to-b from-blue-900 to-black">
       {/* Top header */}
       <header className="bg-gradient-to-r from-cyan-700 to-blue-700">
-        <div className="flex items-center justify-center gap-3 py-3 px-4">
-          {config.logo_url && (
-            <img src={config.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
-          )}
+        <div className="flex items-center gap-3 py-3 px-4">
+          <img
+            src={config.logo_url || 'https://i.imgur.com/FIay1SB.png'}
+            alt="Logo"
+            className="h-10 w-auto object-contain"
+          />
           <span className="text-white font-bold text-xl tracking-wide">{config.nombre_empresa}</span>
         </div>
       </header>
