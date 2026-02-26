@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   PlusIcon,
   PencilIcon,
+  TrashIcon,
   ShieldCheckIcon,
   CheckIcon,
   XMarkIcon,
@@ -443,6 +444,13 @@ function OperariosPanel() {
   const openAdd = () => { setEditing(null); setForm({ nombre: '', email: '', activo: true }); setShowModal(true); };
   const openEdit = (o: Operario) => { setEditing(o); setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo }); setShowModal(true); };
 
+  const del = async (o: Operario) => {
+    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones de jefes.\nEsta acción no se puede deshacer.`)) return;
+    await supabase.from('jefe_operario').delete().eq('operario_nombre', o.nombre);
+    await supabase.from('operarios').delete().eq('id', o.id);
+    load();
+  };
+
   const save = async () => {
     if (!form.nombre.trim()) return;
     if (editing) {
@@ -484,9 +492,14 @@ function OperariosPanel() {
                   </span>
                 </td>
                 <td className="px-4 py-2 text-center">
-                  <button onClick={() => openEdit(o)} className="p-1 rounded hover:bg-slate-100">
-                    <PencilIcon className="h-4 w-4 text-blue-600" />
-                  </button>
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => openEdit(o)} className="p-1 rounded hover:bg-slate-100" title="Editar">
+                      <PencilIcon className="h-4 w-4 text-blue-600" />
+                    </button>
+                    <button onClick={() => del(o)} className="p-1 rounded hover:bg-red-50" title="Eliminar">
+                      <TrashIcon className="h-4 w-4 text-red-500" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

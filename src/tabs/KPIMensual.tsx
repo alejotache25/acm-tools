@@ -29,13 +29,13 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-const PROD_OPTIONS     = [80, 90, 95, 100, 105, 110, 120];
-const CTRL_DOC_OPTIONS = [-80, 1, 10, 20, 30, 40, 50, 60, 70, 80];
+const PROD_OPTIONS     = [0, 80, 90, 95, 100, 105, 110, 120];
+const CTRL_DOC_OPTIONS = [-80, 10, 20, 30, 40, 50, 60, 70, 80];
 const PENALTY_RATE     = 39;   // €/hora (W3 en la hoja)
 
 const DEFAULT_MONTH: MonthData = {
   prod_pct:     100,
-  ctrl_doc_pts: 1,
+  ctrl_doc_pts: 10,
   ctrl_vis_pct: 100,
   retorno_pct:  0,
   herr_pct:     100,
@@ -405,7 +405,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                       disabled={isLocked}
                       className={`${selectCls} w-16`}
                     >
-                      {PROD_OPTIONS.map(v => <option key={v} value={v}>{v}%</option>)}
+                      {PROD_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? '< 80%' : `${v}%`}</option>)}
                     </select>
                   </td>
                   {/* C: Importe Productividad (auto) */}
@@ -786,8 +786,8 @@ export default function KPIMensual({ operario }: { operario: string }) {
             <table className="w-full border-collapse">
               <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">%Obj</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {[[80,25],[90,50],[95,75],[100,100],[105,100],[110,100],[120,100]].map(([p,v]) =>
-                  <tr key={p}><td className="px-2 py-0.5 text-slate-600">{p}%</td><td className="px-2 py-0.5 text-right text-green-700">{v} €</td></tr>
+                {([['< 80%', 0], ['80%', 25], ['90%', 50], ['95%', 75], ['100%', 100], ['105%', 100], ['110%', 100], ['120%', 100]] as [string, number][]).map(([l, v]) =>
+                  <tr key={l}><td className="px-2 py-0.5 text-slate-600">{l}</td><td className={`px-2 py-0.5 text-right ${v > 0 ? 'text-green-700' : 'text-slate-400'}`}>{v} €</td></tr>
                 )}
               </tbody>
             </table>
@@ -799,7 +799,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
             <table className="w-full border-collapse">
               <thead><tr className="bg-slate-100"><th className="px-2 py-1 text-left">Puntos</th><th className="px-2 py-1 text-right">€/mes</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {[[-80,-25],[1,100],[10,100],[20,100],[30,100],[40,100],[50,75],[60,50],[70,25],[80,0]].map(([p,v]) =>
+                {[[-80,-25],[10,100],[20,100],[30,100],[40,100],[50,75],[60,50],[70,25],[80,0]].map(([p,v]) =>
                   <tr key={p}><td className="px-2 py-0.5 text-slate-600">{p}</td><td className={`px-2 py-0.5 text-right ${v > 0 ? 'text-green-700' : v < 0 ? 'text-red-600' : 'text-slate-400'}`}>{v} €</td></tr>
                 )}
               </tbody>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { UserIcon, ChevronRightIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import TabNav from '../components/TabNav';
@@ -259,7 +259,7 @@ function SemaforoKPIPanel({ operarios }: { operarios: string[] }) {
 
 // ─── Técnicos Tab ────────────────────────────────────────────────────────────
 
-function TecnicosTab({ operarios }: { operarios: string[] }) {
+function TecnicosTab({ operarios, onRemove }: { operarios: string[]; onRemove: (nombre: string) => void }) {
   const navigate = useNavigate();
 
   if (operarios.length === 0) {
@@ -273,19 +273,27 @@ function TecnicosTab({ operarios }: { operarios: string[] }) {
   return (
     <div className="space-y-3 mt-4">
       {operarios.map(nombre => (
-        <button
-          key={nombre}
-          onClick={() => navigate(`/operario/${encodeURIComponent(nombre)}`)}
-          className="w-full flex items-center justify-between bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg px-4 py-4 transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-100 rounded-full p-2 group-hover:bg-blue-200 transition-colors">
-              <UserIcon className="h-5 w-5 text-blue-600" />
+        <div key={nombre} className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/operario/${encodeURIComponent(nombre)}`)}
+            className="flex-1 flex items-center justify-between bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-lg px-4 py-4 transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-100 rounded-full p-2 group-hover:bg-blue-200 transition-colors">
+                <UserIcon className="h-5 w-5 text-blue-600" />
+              </div>
+              <span className="font-medium text-slate-800">{nombre}</span>
             </div>
-            <span className="font-medium text-slate-800">{nombre}</span>
-          </div>
-          <ChevronRightIcon className="h-5 w-5 text-slate-400 group-hover:text-blue-600 transition-colors" />
-        </button>
+            <ChevronRightIcon className="h-5 w-5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+          </button>
+          <button
+            onClick={() => onRemove(nombre)}
+            className="p-2.5 rounded-lg border border-red-200 bg-white text-red-400 hover:text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
+            title="Eliminar operario de mi lista"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
+        </div>
       ))}
     </div>
   );
@@ -311,6 +319,14 @@ export default function SeleccionarOperario() {
       });
   }, [user]);
 
+  const removeOperario = async (nombre: string) => {
+    if (!user) return;
+    if (!confirm(`¿Eliminar al operario "${nombre}"?\nSe eliminará definitivamente del sistema y de todas las asignaciones.`)) return;
+    await supabase.from('jefe_operario').delete().eq('operario_nombre', nombre);
+    await supabase.from('operarios').delete().eq('nombre', nombre);
+    setOperarios(prev => prev.filter(n => n !== nombre));
+  };
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto">
@@ -327,7 +343,7 @@ export default function SeleccionarOperario() {
         <h1 className="text-xl font-bold text-slate-800 mb-4">Panel de Jefe</h1>
         <TabNav tabs={JEFE_TABS} active={tab} onChange={setTab} />
         <div className="mt-2">
-          {tab === 'tecnicos'  && <TecnicosTab operarios={operarios} />}
+          {tab === 'tecnicos'  && <TecnicosTab operarios={operarios} onRemove={removeOperario} />}
           {tab === 'dashboard' && <DashboardPanel operariosFilter={operarios} />}
           {tab === 'kpi'       && <KPIDashboard operariosFilter={operarios} />}
           {tab === 'semaforo'  && <SemaforoKPIPanel operarios={operarios} />}
