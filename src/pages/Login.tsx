@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -16,8 +16,15 @@ export default function Login() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.from('config').select('logo_url').single().then(({ data }) => {
+      if (data?.logo_url) setLogoUrl(data.logo_url);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +48,11 @@ export default function Login() {
         return;
       }
       login({ id: data.id, nombre: data.nombre, rol: data.rol });
-      navigate(data.rol === 'admin' ? '/admin' : '/seleccionar-operario');
+      navigate(
+        data.rol === 'admin'    ? '/admin' :
+        data.rol === 'operario' ? `/operario/${encodeURIComponent(data.nombre)}` :
+        '/seleccionar-operario'
+      );
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -53,6 +64,11 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-b from-blue-900 to-black flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="bg-gradient-to-r from-cyan-700 to-blue-700 rounded-t-xl p-8 text-center">
+          <img
+            src={logoUrl || 'https://i.imgur.com/FIay1SB.png'}
+            alt="Logo"
+            className="h-16 w-auto object-contain mx-auto mb-4"
+          />
           <h1 className="text-white text-3xl font-bold tracking-wide">ACM Tools</h1>
           <p className="text-blue-200 text-sm mt-2">Gestión de Informes Operarios</p>
         </div>

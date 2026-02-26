@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,8 @@ const numCls    = 'bg-blue-50 border border-blue-200 rounded px-1 py-0.5 text-xs
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function KPIMensual({ operario }: { operario: string }) {
+  const { user } = useAuth();
+  const isOperario = user?.rol === 'operario';
   const now = new Date();
   const [año, setAño]     = useState(now.getFullYear());
   const [data, setData]   = useState<YearData>(() => loadYear(operario, año));
@@ -380,6 +383,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
           <tbody>
             {rows.map(r => {
               const isCurrent = r.mes === curMes;
+              const isLocked = isOperario && !isCurrent;
               const rowBg = isCurrent ? 'bg-blue-50' : 'bg-white hover:bg-slate-50/80';
 
               return (
@@ -398,6 +402,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.prod_pct}
                       onChange={e => updateField(r.mes, 'prod_pct', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-16`}
                     >
                       {PROD_OPTIONS.map(v => <option key={v} value={v}>{v}%</option>)}
@@ -415,6 +420,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.ctrl_doc_pts}
                       onChange={e => updateField(r.mes, 'ctrl_doc_pts', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-16`}
                     >
                       {CTRL_DOC_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
@@ -432,6 +438,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.ctrl_vis_pct}
                       onChange={e => updateField(r.mes, 'ctrl_vis_pct', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-16`}
                     >
                       <option value={100}>OK</option>
@@ -451,6 +458,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                       type="number" step="1" min="0" max="100"
                       value={r.md.retorno_pct}
                       onChange={e => updateField(r.mes, 'retorno_pct', parseFloat(e.target.value) || 0)}
+                      disabled={isLocked}
                       className={numCls}
                     />
                   </td>
@@ -470,6 +478,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.herr_pct}
                       onChange={e => updateField(r.mes, 'herr_pct', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-14`}
                     >
                       <option value={100}>OK</option>
@@ -488,6 +497,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.vehic_pct}
                       onChange={e => updateField(r.mes, 'vehic_pct', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-14`}
                     >
                       <option value={100}>OK</option>
@@ -506,6 +516,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                     <select
                       value={r.md.aseo_pct}
                       onChange={e => updateField(r.mes, 'aseo_pct', Number(e.target.value))}
+                      disabled={isLocked}
                       className={`${selectCls} w-14`}
                     >
                       <option value={100}>OK</option>
@@ -525,6 +536,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                       type="number" step="0.5" min="0"
                       value={r.md.h_obj}
                       onChange={e => updateField(r.mes, 'h_obj', parseFloat(e.target.value) || 0)}
+                      disabled={isLocked}
                       className={numCls}
                     />
                   </td>
@@ -534,6 +546,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                       type="number" step="0.5" min="0"
                       value={r.md.h_inv}
                       onChange={e => updateField(r.mes, 'h_inv', parseFloat(e.target.value) || 0)}
+                      disabled={isLocked}
                       className={numCls}
                     />
                   </td>
@@ -639,6 +652,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
             <tbody>
               {rows.map((r, i) => {
                 const isCurrent = r.mes === curMes;
+                const isLocked2 = isOperario && !isCurrent;
                 const cobrar = Math.max(r.total - kpiRef, 0);
                 return (
                   <tr key={r.mes} className={`${isCurrent ? 'bg-blue-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-slate-100/60 transition-colors`}>
@@ -664,6 +678,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                         type="number" step="1" min="0"
                         value={r.md.objetivo}
                         onChange={e => updateField(r.mes, 'objetivo', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked2}
                         className={`${numCls} w-16`}
                       />
                     </td>
@@ -673,6 +688,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                         type="number" step="0.5" min="0"
                         value={r.md.dietas}
                         onChange={e => updateField(r.mes, 'dietas', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked2}
                         className={`${numCls} w-16`}
                       />
                     </td>
@@ -682,6 +698,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                         type="number" step="0.5" min="0"
                         value={r.md.h_ext}
                         onChange={e => updateField(r.mes, 'h_ext', parseFloat(e.target.value) || 0)}
+                        disabled={isLocked2}
                         className={`${numCls} w-16`}
                       />
                     </td>

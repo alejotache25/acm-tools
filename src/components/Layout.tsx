@@ -6,6 +6,7 @@ import {
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   DocumentArrowDownIcon,
+  ChartBarSquareIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -40,7 +41,14 @@ export default function Layout({ children }: { children: ReactNode }) {
   const adminLinks = [
     { to: '/admin', Icon: Cog6ToothIcon, label: 'Admin' },
   ];
-  const navLinks = user?.rol === 'admin' ? adminLinks : jefeLinks;
+  const operarioLinks = [
+    { to: `/operario/${encodeURIComponent(user?.nombre ?? '')}`, Icon: ChartBarSquareIcon, label: 'Mis KPIs' },
+    { to: '/mis-registros', Icon: ClipboardDocumentListIcon, label: 'Mis Registros' },
+  ];
+  const navLinks =
+    user?.rol === 'admin'    ? adminLinks :
+    user?.rol === 'operario' ? operarioLinks :
+    jefeLinks;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-900 to-black">

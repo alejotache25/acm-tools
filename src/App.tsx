@@ -19,10 +19,11 @@ const SYNC_TABLES = [
   { table: 'issus',               fuente: '06_INCIDENCIAS_ISSUS' },
 ];
 
-function PrivateRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+function PrivateRoute({ children, adminOnly = false, jefeOnly = false }: { children: ReactNode; adminOnly?: boolean; jefeOnly?: boolean }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (adminOnly && user.rol !== 'admin') return <Navigate to="/seleccionar-operario" replace />;
+  if (jefeOnly && user.rol === 'operario') return <Navigate to={`/operario/${encodeURIComponent(user.nombre)}`} replace />;
   return <>{children}</>;
 }
 
@@ -46,7 +47,7 @@ function AppRoutes() {
       } />
 
       <Route path="/seleccionar-operario" element={
-        <PrivateRoute>
+        <PrivateRoute jefeOnly>
           <Layout><SeleccionarOperario /></Layout>
         </PrivateRoute>
       } />
@@ -64,7 +65,7 @@ function AppRoutes() {
       } />
 
       <Route path="/informes" element={
-        <PrivateRoute>
+        <PrivateRoute jefeOnly>
           <Layout><Informes /></Layout>
         </PrivateRoute>
       } />

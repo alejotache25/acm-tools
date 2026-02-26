@@ -492,7 +492,7 @@ function page3Visitas(doc: jsPDF, params: ReportParams, logo: string | null) {
     body: calData.map(row => row.map((m) => {
       const mIdx = calData.flat().indexOf(m);
       const isCurrent = mIdx + 1 === params.mes;
-      return { content: m, styles: { fillColor: isCurrent ? [30,80,180] as [number,number,number] : undefined, textColor: isCurrent ? [255,255,255] as [number,number,number] : [30,30,30] as [number,number,number], fontStyle: isCurrent ? 'bold' : 'normal' } };
+      return { content: m, styles: { fillColor: (isCurrent ? [30,80,180] : [245,248,255]) as [number,number,number], textColor: isCurrent ? [255,255,255] as [number,number,number] : [30,30,30] as [number,number,number], fontStyle: isCurrent ? 'bold' : 'normal' } };
     })),
     styles: { fontSize: 8, cellPadding: 3 },
     tableWidth: 90,
@@ -1100,7 +1100,7 @@ function page9Analisis(doc: jsPDF, params: ReportParams, logo: string | null, ro
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 
-export async function generateKpiPdf(params: ReportParams): Promise<void> {
+async function buildDoc(params: ReportParams): Promise<jsPDF> {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -1110,10 +1110,7 @@ export async function generateKpiPdf(params: ReportParams): Promise<void> {
   const logo = await urlToBase64('https://i.imgur.com/FIay1SB.png');
   const rows = calcRows(params.kpiData, params.kpiRef);
 
-  // Page 1 (landscape): KPI annual table
   page1Kpi(doc, params, logo, rows);
-
-  // Pages 2-9 (portrait)
   page2CtrlDoc(doc, params, logo);
   page3Visitas(doc, params, logo);
   page4Retornos(doc, params, logo, rows);
@@ -1123,6 +1120,16 @@ export async function generateKpiPdf(params: ReportParams): Promise<void> {
   page8CalidadTrimestral(doc, params, logo);
   page9Analisis(doc, params, logo, rows);
 
+  return doc;
+}
+
+export async function generateKpiPdf(params: ReportParams): Promise<void> {
+  const doc = await buildDoc(params);
   const mesName = MESES[params.mes - 1].toLowerCase();
   doc.save(`informe_${params.operario.toLowerCase().replace(/\s+/g, '_')}_${mesName}_${params.año}.pdf`);
+}
+
+export async function previewKpiPdf(params: ReportParams): Promise<string> {
+  const doc = await buildDoc(params);
+  return doc.output('datauristring') as string;
 }

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { sendWebhook } from '../lib/webhook';
 import type { Incidencia } from '../types';
+import SolicitudModal from '../components/SolicitudModal';
 
 const today = () => new Date().toISOString().split('T')[0];
 const thisYear = () => new Date().getFullYear();
@@ -27,12 +28,13 @@ const initForm = () => ({
   observaciones: '',
 });
 
-export default function Incidencias({ operario }: { operario: string }) {
+export default function Incidencias({ operario, readOnly = false }: { operario: string; readOnly?: boolean }) {
   const { user } = useAuth();
   const [form, setForm] = useState(initForm());
   const [rows, setRows] = useState<Incidencia[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [solicitudTarget, setSolicitudTarget] = useState<{ id: string; resumen: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -86,10 +88,17 @@ export default function Incidencias({ operario }: { operario: string }) {
     load();
   };
 
+  const handleSolicitud = (id: string, resumen: string) => setSolicitudTarget({ id, resumen });
+
   return (
     <div className="space-y-6">
+      {readOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-700 font-medium">
+          Vista de solo lectura — modo supervisor
+        </div>
+      )}
       {/* Form */}
-      <div className="bg-white rounded-lg p-4 space-y-3">
+      {!readOnly && <div className="bg-white rounded-lg p-4 space-y-3">
         <h3 className="font-semibold text-slate-700">Nuevo registro</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <div>
@@ -136,7 +145,7 @@ export default function Incidencias({ operario }: { operario: string }) {
           className="flex items-center gap-1 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60">
           <PlusIcon className="h-4 w-4" /> {saving ? 'Guardando...' : 'Añadir registro'}
         </button>
-      </div>
+      </div>}
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg">
@@ -148,14 +157,14 @@ export default function Incidencias({ operario }: { operario: string }) {
               <th className="px-3 py-2 text-left">INCIDENCIA</th>
               <th className="px-3 py-2 text-center">PUNTOS</th>
               <th className="px-3 py-2 text-left">OBSERVACIONES</th>
-              <th className="px-3 py-2 text-center">ACCIONES</th>
+              {!readOnly && <th className="px-3 py-2 text-center">ACCIONES</th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-300 text-sm">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Cargando...</td></tr>
+              <tr><td colSpan={readOnly ? 5 : 6} className="px-4 py-6 text-center text-slate-400">Cargando...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Sin registros este mes</td></tr>
+              <tr><td colSpan={readOnly ? 5 : 6} className="px-4 py-6 text-center text-slate-400">Sin registros este mes</td></tr>
             ) : rows.map(r => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap text-slate-700">{r.fecha}</td>
@@ -163,16 +172,35 @@ export default function Incidencias({ operario }: { operario: string }) {
                 <td className="px-3 py-2 text-slate-800 max-w-xs truncate">{r.incidencia}</td>
                 <td className="px-3 py-2 text-center font-semibold text-slate-800">{r.puntos}</td>
                 <td className="px-3 py-2 text-slate-600 max-w-xs truncate">{r.observaciones}</td>
-                <td className="px-3 py-2 text-center">
-                  <button onClick={() => handleDelete(r.id)} className="p-1 rounded hover:bg-red-50">
-                    <TrashIcon className="h-4 w-4 text-red-500" />
-                  </button>
-                </td>
+                {!readOnly && (
+                  <td className="px-3 py-2 text-center">
+                    {user?.rol === 'admin' ? (
+                      <button onClick={() => handleDelete(r.id)} className="p-1 rounded hover:bg-red-50" title="Eliminar">
+                        <TrashIcon className="h-4 w-4 text-red-500" />
+                      </button>
+                    ) : (
+                      <button onClick={() => handleSolicitud(r.id, `${r.fecha} · ${r.incidencia}`)} className="p-1 rounded hover:bg-amber-50" title="Solicitar borrado al admin">
+                        <ClockIcon className="h-4 w-4 text-amber-500" />
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {solicitudTarget && user && (
+        <SolicitudModal
+          tabla="incidencias"
+          registroId={solicitudTarget.id}
+          registroResumen={solicitudTarget.resumen}
+          solicitante={user.nombre}
+          solicitanteRol={user.rol}
+          onClose={() => setSolicitudTarget(null)}
+          onSuccess={() => { setSolicitudTarget(null); load(); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { DocumentArrowDownIcon, EnvelopeIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { DocumentArrowDownIcon, EnvelopeIcon, Cog6ToothIcon, EyeIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { generateKpiPdf, type ReportParams } from '../utils/pdfReport';
+import { generateKpiPdf, previewKpiPdf, type ReportParams } from '../utils/pdfReport';
 import type { Incidencia, ControlCalidad, Visita, Limpieza, HorasImproductivas } from '../types';
 
 const MESES = [
@@ -49,8 +49,12 @@ export default function Informes() {
 
   // Status
   const [loading, setLoading]         = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingOps, setLoadingOps]   = useState(true);
   const [error, setError]             = useState('');
+
+  // Preview
+  const [previewUrl, setPreviewUrl]   = useState<string | null>(null);
 
   // Email config state
   const [showEmailConfig, setShowEmailConfig] = useState(false);
@@ -97,44 +101,54 @@ export default function Informes() {
       });
   }, [user]);
 
+  const fetchReportParams = async (): Promise<ReportParams> => {
+    const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
+    const endDate   = new Date(año, mes, 0).toISOString().split('T')[0];
+    const [incRes, ccRes, visRes, limpRes, hiRes] = await Promise.all([
+      supabase.from('incidencias').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+      supabase.from('control_calidad').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+      supabase.from('visitas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+      supabase.from('limpieza').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+      supabase.from('horas_improductivas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+    ]);
+    return {
+      operario, mes, año,
+      kpiData:        loadKpiYear(operario, año),
+      kpiRef:         loadKpiRef(operario, año),
+      incidencias:    (incRes.data  || []) as Incidencia[],
+      controlCalidad: (ccRes.data   || []) as ControlCalidad[],
+      visitas:        (visRes.data  || []) as Visita[],
+      limpieza:       (limpRes.data || []) as Limpieza[],
+      horasImprod:    (hiRes.data   || []) as HorasImproductivas[],
+    };
+  };
+
   const handleGenerarPdf = async () => {
     if (!operario) return;
     setLoading(true);
     setError('');
-
     try {
-      // Date range for the selected month
-      const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
-      const endDate   = new Date(año, mes, 0).toISOString().split('T')[0];
-
-      // Fetch all Supabase data in parallel
-      const [incRes, ccRes, visRes, limpRes, hiRes] = await Promise.all([
-        supabase.from('incidencias').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
-        supabase.from('control_calidad').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
-        supabase.from('visitas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
-        supabase.from('limpieza').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
-        supabase.from('horas_improductivas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
-      ]);
-
-      const params: ReportParams = {
-        operario,
-        mes,
-        año,
-        kpiData:        loadKpiYear(operario, año),
-        kpiRef:         loadKpiRef(operario, año),
-        incidencias:    (incRes.data  || []) as Incidencia[],
-        controlCalidad: (ccRes.data   || []) as ControlCalidad[],
-        visitas:        (visRes.data  || []) as Visita[],
-        limpieza:       (limpRes.data || []) as Limpieza[],
-        horasImprod:    (hiRes.data   || []) as HorasImproductivas[],
-      };
-
-      await generateKpiPdf(params);
+      await generateKpiPdf(await fetchReportParams());
     } catch (e) {
       console.error(e);
-      setError('Error generando el PDF. Inténtalo de nuevo.');
+      setError(`Error generando el PDF: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (!operario) return;
+    setLoadingPreview(true);
+    setError('');
+    try {
+      const url = await previewKpiPdf(await fetchReportParams());
+      setPreviewUrl(url);
+    } catch (e) {
+      console.error(e);
+      setError(`Error generando la vista previa: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoadingPreview(false);
     }
   };
 
@@ -220,27 +234,50 @@ export default function Informes() {
           <p className="mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
         )}
 
-        {/* Generate button */}
-        <button
-          onClick={handleGenerarPdf}
-          disabled={loading || !operario}
-          className="mt-5 w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 transition-all"
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-              Generando PDF...
-            </>
-          ) : (
-            <>
-              <DocumentArrowDownIcon className="h-5 w-5" />
-              Descargar PDF — {operario || '—'} · {MESES[mes - 1]} {año}
-            </>
-          )}
-        </button>
+        {/* Buttons */}
+        <div className="mt-5 flex gap-3">
+          <button
+            onClick={handlePreview}
+            disabled={loadingPreview || loading || !operario}
+            className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl py-3 border border-slate-300 transition-all"
+          >
+            {loadingPreview ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Cargando...
+              </>
+            ) : (
+              <>
+                <EyeIcon className="h-5 w-5" />
+                Vista previa
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleGenerarPdf}
+            disabled={loading || loadingPreview || !operario}
+            className="flex-1 flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 transition-all"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Generando...
+              </>
+            ) : (
+              <>
+                <DocumentArrowDownIcon className="h-5 w-5" />
+                Descargar PDF
+              </>
+            )}
+          </button>
+        </div>
 
         <p className="text-xs text-slate-400 mt-2 text-center">
           El PDF incluye 9 secciones: KPI anual, Calidad Documental, Visitas, Retornos, Limpieza, Horas Improductivas, Análisis y más.
@@ -342,6 +379,41 @@ export default function Informes() {
           </div>
         ))}
       </div>
+
+      {/* ─── Preview Modal ─── */}
+      {previewUrl && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/80">
+          {/* Modal header */}
+          <div className="flex items-center justify-between bg-blue-900 px-5 py-3 shrink-0">
+            <span className="text-white font-semibold text-sm">
+              Vista previa — {operario} · {MESES[mes - 1]} {año}
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleGenerarPdf}
+                disabled={loading}
+                className="flex items-center gap-2 bg-white text-blue-900 font-semibold text-sm px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-all"
+              >
+                <DocumentArrowDownIcon className="h-4 w-4" />
+                Descargar
+              </button>
+              <button
+                onClick={() => setPreviewUrl(null)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* PDF iframe */}
+          <iframe
+            src={previewUrl}
+            className="flex-1 w-full"
+            title="Vista previa del informe"
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -17,7 +17,9 @@ import Limpieza from '../tabs/Limpieza';
 import HorasImproductivas from '../tabs/HorasImproductivas';
 import Issus from '../tabs/Issus';
 import KPIMensual from '../tabs/KPIMensual';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const TABS = [
   { id: '01', label: '01 Incidencias',          Icon: ExclamationTriangleIcon },
@@ -32,12 +34,31 @@ const TABS = [
 export default function Operario() {
   const { nombre } = useParams<{ nombre: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('01');
 
   const operario = decodeURIComponent(nombre || '');
+  const isOperario = user?.rol === 'operario';
+  const isJefe = user?.rol === 'jefe';
+  const [asignados, setAsignados] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isJefe || !user?.id) return;
+    supabase.from('jefe_operario').select('operario_nombre').eq('jefe_id', user.id)
+      .then(({ data }) => setAsignados((data || []).map(r => r.operario_nombre)));
+  }, [isJefe, user?.id]);
+
+  // readOnly when: operario role, or jefe viewing someone not assigned to them
+  const readOnly = isOperario || (isJefe && asignados.length > 0 && !asignados.includes(operario));
 
   if (!operario) {
     navigate('/seleccionar-operario');
+    return null;
+  }
+
+  // Operarios can only view their own page
+  if (isOperario && user?.nombre !== operario) {
+    navigate(`/operario/${encodeURIComponent(user?.nombre ?? '')}`);
     return null;
   }
 
@@ -45,15 +66,19 @@ export default function Operario() {
     <div className="max-w-6xl mx-auto">
       {/* Back + title */}
       <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={() => navigate('/seleccionar-operario')}
-          className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-        >
-          <ArrowLeftIcon className="h-5 w-5" />
-        </button>
+        {!isOperario && (
+          <button
+            onClick={() => navigate('/seleccionar-operario')}
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+          </button>
+        )}
         <div>
           <h1 className="text-white font-bold text-xl">{operario}</h1>
-          <p className="text-blue-300 text-sm">Gestión de registros del operario</p>
+          <p className="text-blue-300 text-sm">
+            {isOperario ? 'Mis registros' : readOnly ? 'Vista de solo lectura' : 'Gestión de registros del operario'}
+          </p>
         </div>
       </div>
 
@@ -62,12 +87,12 @@ export default function Operario() {
         <TabNav tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
         <div className="mt-4">
-          {activeTab === '01' && <Incidencias operario={operario} />}
-          {activeTab === '02' && <ControlCalidad operario={operario} />}
-          {activeTab === '03' && <Visitas operario={operario} />}
-          {activeTab === '04' && <Limpieza operario={operario} />}
-          {activeTab === '05' && <HorasImproductivas operario={operario} />}
-          {activeTab === '06' && <Issus operario={operario} />}
+          {activeTab === '01' && <Incidencias operario={operario} readOnly={readOnly} />}
+          {activeTab === '02' && <ControlCalidad operario={operario} readOnly={readOnly} />}
+          {activeTab === '03' && <Visitas operario={operario} readOnly={readOnly} />}
+          {activeTab === '04' && <Limpieza operario={operario} readOnly={readOnly} />}
+          {activeTab === '05' && <HorasImproductivas operario={operario} readOnly={readOnly} />}
+          {activeTab === '06' && <Issus operario={operario} readOnly={readOnly} />}
           {activeTab === '07' && <KPIMensual operario={operario} />}
         </div>
       </div>

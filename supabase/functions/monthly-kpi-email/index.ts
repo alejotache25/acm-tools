@@ -1,235 +1,300 @@
-/**
- * monthly-kpi-email — Supabase Edge Function
- *
- * El día 1 de cada mes a las 09:00 envía al JEFE un email por cada uno de sus
- * agentes asignados, con el informe del mes anterior.
- *
- * Flujo:
- *   1. Lee email_config (jefe_id + email + activo=true)
- *   2. Para cada jefe, lee jefe_operario (sus agentes)
- *   3. Para cada agente consulta Supabase del mes anterior
- *   4. Envía un email por agente al jefe via Resend
- *
- * Activar con pg_cron (Supabase SQL Editor):
- *
- *   SELECT cron.schedule(
- *     'monthly-kpi-email',
- *     '0 9 1 * *',
- *     $$
- *       SELECT net.http_post(
- *         url := 'https://<PROJECT_REF>.supabase.co/functions/v1/monthly-kpi-email',
- *         headers := '{"Authorization": "Bearer <SERVICE_ROLE_KEY>",
- *                      "Content-Type": "application/json"}',
- *         body := '{}'
- *       );
- *     $$
- *   );
- *
- * Variables de entorno requeridas (Supabase Dashboard → Edge Functions → Secrets):
- *   RESEND_API_KEY           — clave de API de resend.com
- *   SUPABASE_URL             — inyectada automáticamente
- *   SUPABASE_SERVICE_ROLE_KEY — inyectada automáticamente
- *   FROM_EMAIL               — ej: informes@tudominio.com (o onboarding@resend.dev en dev)
- */
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { PDFDocument, rgb, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1';
 
-const MESES = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
-];
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const C = {
+  navy:   rgb(0.051, 0.184, 0.431),
+  blue:   rgb(0.086, 0.396, 0.753),
+  white:  rgb(1, 1, 1),
+  lBlue:  rgb(0.953, 0.969, 1.0),
+  text:   rgb(0.1, 0.1, 0.1),
+  green:  rgb(0.102, 0.451, 0.251),
+  red:    rgb(0.773, 0.133, 0.122),
+  border: rgb(0.8, 0.86, 0.93),
+  yellow: rgb(1, 0.992, 0.878),
+  grey:   rgb(0.6, 0.6, 0.6),
+  lGreen: rgb(0.902, 0.957, 0.914),
+  lRed:   rgb(0.988, 0.91, 0.902),
+};
 
-interface EmailConfig {
-  jefe_id: string;
-  email: string;
+// Safe base64 conversion for large Uint8Array
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
-interface JefeOperario {
-  operario_nombre: string;
+function drawTable(
+  page: any, font: any, bold: any,
+  headers: string[], rows: string[][],
+  x: number, startY: number, colWidths: number[],
+  rowH = 18, fontSize = 8,
+): number {
+  const totalW = colWidths.reduce((a, b) => a + b, 0);
+
+  // Header row
+  page.drawRectangle({ x, y: startY - rowH, width: totalW, height: rowH, color: C.blue });
+  let cx = x;
+  headers.forEach((h, i) => {
+    page.drawText(h, { x: cx + 3, y: startY - rowH + 5, size: fontSize - 0.5, font: bold, color: C.white, maxWidth: colWidths[i] - 6 });
+    cx += colWidths[i];
+  });
+
+  let curY = startY - rowH;
+  rows.forEach((row, ri) => {
+    const rY = curY - rowH;
+    page.drawRectangle({ x, y: rY, width: totalW, height: rowH, color: ri % 2 === 0 ? C.white : C.lBlue });
+    page.drawLine({ start: { x, y: rY }, end: { x: x + totalW, y: rY }, thickness: 0.3, color: C.border });
+    let cx2 = x;
+    row.forEach((cell, ci) => {
+      const text = String(cell || '');
+      const clipped = text.length > 40 ? text.substring(0, 38) + '..' : text;
+      page.drawText(clipped, { x: cx2 + 3, y: rY + 5, size: fontSize, font, color: C.text, maxWidth: colWidths[ci] - 6 });
+      cx2 += colWidths[ci];
+    });
+    curY = rY;
+  });
+
+  page.drawRectangle({ x, y: curY, width: totalW, height: startY - curY, opacity: 0, borderColor: C.border, borderWidth: 0.5 });
+  return curY;
 }
 
-interface IncRow { fecha: string; incidencia: string; puntos: number; observaciones?: string; }
-interface CCRow  { fecha: string; tipo_cq: string; horas: number; total_cq: number; descripcion: string; }
-interface LimpRow { vestuario_h: number; limpieza_vh: number; seguridad_t: number; herramientas: number; }
-interface HIRow  { h_recg_mat: number; h_reunion: number; h_mant_furgos: number; h_mant_instalaciones: number; h_formacion: number; consumibles_e: number; }
+function addHeader(page: any, bold: any, font: any, operario: string, mesNombre: string, año: number) {
+  const { width, height } = page.getSize();
+  page.drawRectangle({ x: 0, y: height - 48, width, height: 48, color: C.navy });
+  page.drawText("INFORME MENSUAL DE KPI'S", { x: 20, y: height - 22, size: 13, font: bold, color: C.white });
+  page.drawText(`TÉCNICO: ${operario.toUpperCase()}   ·   ${mesNombre.toUpperCase()} ${año}`, { x: 20, y: height - 38, size: 8, font, color: rgb(0.565, 0.792, 0.976) });
+  page.drawRectangle({ x: 0, y: height - 52, width, height: 4, color: C.blue });
+}
 
-// ─── HTML builder ─────────────────────────────────────────────────────────────
+function addFooter(page: any, font: any) {
+  const { width } = page.getSize();
+  page.drawLine({ start: { x: 20, y: 28 }, end: { x: width - 20, y: 28 }, thickness: 0.5, color: C.border });
+  page.drawText('Director ACM tools   ·   Lluis Diaz', { x: width - 165, y: 15, size: 8, font, color: C.grey });
+}
 
-function buildHtml(
-  operario: string,
-  mes: number,
-  año: number,
-  inc: IncRow[],
-  cc: CCRow[],
-  limp: LimpRow[],
-  hi: HIRow[],
-): string {
-  const mesNombre    = MESES[mes - 1];
-  const totalInc     = inc.length;
-  const puntosInc    = inc.reduce((s, r) => s + r.puntos, 0);
-  const retornos     = cc.filter(r => r.tipo_cq === 'RETORNO ATRIBUIBLE');
-  const totalRet     = retornos.length;
-  const totalHI      = hi.reduce((s, r) => s + r.h_recg_mat + r.h_reunion + r.h_mant_furgos + r.h_mant_instalaciones + r.h_formacion, 0);
-  const avgLimp      = limp.length > 0
-    ? (limp.reduce((s, r) => s + (r.vestuario_h + r.limpieza_vh + r.seguridad_t + r.herramientas) / 4, 0) / limp.length).toFixed(2)
+function addSectionTitle(page: any, bold: any, text: string, x: number, y: number) {
+  page.drawRectangle({ x, y: y - 2, width: 3, height: 14, color: C.blue });
+  page.drawText(text, { x: x + 8, y, size: 11, font: bold, color: C.navy });
+}
+
+function addAnalysisBox(page: any, font: any, text: string, x: number, y: number) {
+  page.drawRectangle({ x, y: y - 30, width: 535, height: 30, color: C.yellow, borderColor: rgb(0.976, 0.659, 0.145), borderWidth: 0.5 });
+  page.drawText(text, { x: x + 8, y: y - 19, size: 9, font, color: rgb(0.3, 0.22, 0.05), maxWidth: 519 });
+}
+
+async function buildPdf(
+  operario: string, mes: number, año: number,
+  inc: any[], cc: any[], limp: any[], hi: any[], visitas: any[]
+): Promise<Uint8Array> {
+  const pdf  = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const mesNombre = MESES[mes - 1];
+
+  const retornos  = cc.filter((r: any) => r.tipo_cq === 'RETORNO ATRIBUIBLE');
+  const totalInc  = inc.length;
+  const puntosInc = inc.reduce((s: number, r: any) => s + (r.puntos || 0), 0);
+  const totalRet  = retornos.length;
+  const totalHI   = hi.reduce((s: number, r: any) =>
+    s + (r.h_recg_mat||0) + (r.h_reunion||0) + (r.h_mant_furgos||0) + (r.h_mant_instalaciones||0) + (r.h_formacion||0), 0);
+  const avgLimp   = limp.length > 0
+    ? (limp.reduce((s: number, r: any) => s + ((r.vestuario_h||0)+(r.limpieza_vh||0)+(r.seguridad_t||0)+(r.herramientas||0))/4, 0) / limp.length).toFixed(2)
     : 'N/A';
 
-  const cardColor = (ok: boolean) => ok ? '#e6f4ea' : '#fce8e6';
-  const valColor  = (ok: boolean) => ok ? '#1a7340' : '#c5221f';
+  // ── PAGE 1: Resumen KPI ──────────────────────────────────────────────────
+  {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-<style>
-  body{font-family:Arial,sans-serif;background:#f0f4fa;margin:0;padding:20px}
-  .wrap{max-width:660px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-  .hdr{background:linear-gradient(135deg,#0d2f6e,#1565c0);padding:24px 32px;text-align:center}
-  .hdr img{height:38px;margin-bottom:8px}
-  .hdr h1{color:#fff;font-size:18px;margin:0 0 4px}
-  .hdr p{color:#90caf9;font-size:12px;margin:0}
-  .body{padding:24px 32px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
-  .card{border-radius:8px;padding:14px;text-align:center}
-  .card .v{font-size:22px;font-weight:700}
-  .card .l{font-size:11px;color:#666;margin-top:2px}
-  .sec{font-size:13px;font-weight:700;color:#0d2f6e;margin:18px 0 6px;border-left:4px solid #1565c0;padding-left:8px}
-  table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
-  th{background:#1565c0;color:#fff;padding:7px 9px;text-align:left}
-  td{padding:6px 9px;border-bottom:1px solid #e8ecf4}
-  tr:nth-child(even) td{background:#f5f8ff}
-  .note{color:#aaa;font-style:italic;text-align:center;padding:10px;font-size:12px}
-  .ana{background:#fffde7;border-left:4px solid #f9a825;padding:9px 13px;border-radius:4px;font-size:11px;color:#555;margin:8px 0}
-  .ftr{background:#f5f8ff;border-top:1px solid #dde6f4;padding:14px 32px;text-align:right;font-size:11px;color:#888}
-</style></head><body>
-<div class="wrap">
-  <div class="hdr">
-    <img src="https://i.imgur.com/FIay1SB.png" alt="ACM"/>
-    <h1>INFORME MENSUAL DE KPI'S</h1>
-    <p>TÉCNICO: ${operario.toUpperCase()} &nbsp;·&nbsp; ${mesNombre.toUpperCase()} ${año}</p>
-  </div>
-  <div class="body">
-    <div class="grid">
-      <div class="card" style="background:${cardColor(totalInc===0)}">
-        <div class="v" style="color:${valColor(totalInc===0)}">${totalInc}</div>
-        <div class="l">Incidencias documentales</div>
-      </div>
-      <div class="card" style="background:${cardColor(puntosInc===0)}">
-        <div class="v" style="color:${valColor(puntosInc===0)}">${puntosInc}</div>
-        <div class="l">Puntos de penalización</div>
-      </div>
-      <div class="card" style="background:${cardColor(totalRet===0)}">
-        <div class="v" style="color:${valColor(totalRet===0)}">${totalRet}</div>
-        <div class="l">Retornos atribuibles</div>
-      </div>
-      <div class="card" style="background:#e8f0fe">
-        <div class="v" style="color:#1a3c8e">${avgLimp === 'N/A' ? 'N/A' : avgLimp + '/10'}</div>
-        <div class="l">Promedio limpieza</div>
-      </div>
-    </div>
+    let y = H - 72;
+    addSectionTitle(pg, bold, "RESUMEN DE KPI'S DEL MES", 30, y);
+    y -= 28;
 
-    <div class="sec">Control Documental</div>
-    ${inc.length > 0 ? `
-    <table>
-      <tr><th>Fecha</th><th>Incidencia</th><th>Puntos</th><th>Observaciones</th></tr>
-      ${inc.map(r=>`<tr><td>${r.fecha}</td><td>${r.incidencia}</td><td>${r.puntos}</td><td>${r.observaciones||''}</td></tr>`).join('')}
-    </table>` : `<p class="note">Sin incidencias documentales este mes.</p>`}
-    <div class="ana">${totalInc===0 ? `${operario} no registró incidencias documentales. Cumplimiento óptimo.` : `${totalInc} incidencias — ${puntosInc} puntos de penalización.`}</div>
+    const cardData = [
+      { label: 'Incidencias documentales', val: String(totalInc),                              good: totalInc === 0 },
+      { label: 'Puntos de penalización',   val: String(puntosInc),                             good: puntosInc === 0 },
+      { label: 'Retornos atribuibles',     val: String(totalRet),                              good: totalRet === 0 },
+      { label: 'Horas improductivas',      val: `${totalHI}h`,                                 good: totalHI < 10 },
+      { label: 'Promedio limpieza',        val: avgLimp === 'N/A' ? 'N/A' : `${avgLimp}/10`,  good: true },
+      { label: 'Registros de visita',      val: String(visitas.length),                        good: true },
+    ];
 
-    <div class="sec">Retornos Atribuibles</div>
-    ${retornos.length > 0 ? `
-    <table>
-      <tr><th>Fecha</th><th>Tipo</th><th>Horas</th><th>Descripción</th></tr>
-      ${retornos.map(r=>`<tr><td>${r.fecha}</td><td>${r.tipo_cq}</td><td>${r.horas}</td><td>${r.descripcion}</td></tr>`).join('')}
-    </table>` : `<p class="note">Sin retornos atribuibles este mes.</p>`}
-    <div class="ana">${totalRet===0 ? 'Alta calidad en la ejecución. Sin retornos.' : `${totalRet} retornos registrados. Revisar causas.`}</div>
+    const cW = 170, cH = 60, gX = 12;
+    cardData.forEach((c, i) => {
+      const col = i % 3, row = Math.floor(i / 3);
+      const cx = 30 + col * (cW + gX);
+      const cy = y - row * (cH + gX);
+      pg.drawRectangle({ x: cx, y: cy - cH, width: cW, height: cH, color: c.good ? C.lGreen : C.lRed, borderColor: c.good ? rgb(0.4,0.75,0.45) : rgb(0.85,0.35,0.3), borderWidth: 1 });
+      pg.drawText(c.val, { x: cx + cW/2 - c.val.length * 5, y: cy - 30, size: 18, font: bold, color: c.good ? C.green : C.red });
+      pg.drawText(c.label, { x: cx + 6, y: cy - cH + 8, size: 7.5, font, color: rgb(0.35,0.35,0.35), maxWidth: cW - 12 });
+    });
 
-    <div class="sec">Horas Improductivas — Total: ${totalHI}h</div>
-    ${hi.length > 0 ? `
-    <table>
-      <tr><th>Recog. Mat.</th><th>Reunión</th><th>Mant. Furgos</th><th>Formación</th><th>Consumibles</th></tr>
-      ${hi.map(r=>`<tr><td>${r.h_recg_mat}h</td><td>${r.h_reunion}h</td><td>${r.h_mant_furgos}h</td><td>${r.h_formacion}h</td><td>${r.consumibles_e}€</td></tr>`).join('')}
-    </table>` : `<p class="note">Sin horas improductivas registradas.</p>`}
+    y -= 2 * (cH + gX) + 20;
+    const nota = totalInc === 0
+      ? `${operario} no registró incidencias documentales en ${mesNombre} ${año}. Cumplimiento óptimo.`
+      : `Se registraron ${totalInc} incidencias con ${puntosInc} puntos de penalización en ${mesNombre} ${año}.`;
+    addAnalysisBox(pg, font, nota, 30, y);
+  }
 
-    <div class="sec">Control Limpieza — Promedio: ${avgLimp}</div>
-    ${limp.length > 0 ? `
-    <table>
-      <tr><th>Vestuario</th><th>Limpieza VH</th><th>Seguridad</th><th>Herramientas</th><th>Promedio</th></tr>
-      ${limp.map(r=>{const a=((r.vestuario_h+r.limpieza_vh+r.seguridad_t+r.herramientas)/4).toFixed(2);return`<tr><td>${r.vestuario_h}</td><td>${r.limpieza_vh}</td><td>${r.seguridad_t}</td><td>${r.herramientas}</td><td><b>${a}</b></td></tr>`;}).join('')}
-    </table>` : `<p class="note">Sin registros de limpieza.</p>`}
+  // ── PAGE 2: Control Documental ───────────────────────────────────────────
+  {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
+    let y = H - 72;
+    addSectionTitle(pg, bold, 'CONTROL DOCUMENTAL — INCIDENCIAS', 30, y);
+    y -= 25;
+    if (inc.length > 0) {
+      const endY = drawTable(pg, font, bold,
+        ['Fecha','Incidencia','Puntos','Observaciones'],
+        inc.map((r:any) => [r.fecha||'', r.incidencia||'', String(r.puntos||0), r.observaciones||'']),
+        30, y, [70, 195, 55, 215]);
+      if (endY > 60) addAnalysisBox(pg, font, `${totalInc} incidencias — ${puntosInc} puntos de penalización.`, 30, endY - 10);
+    } else {
+      pg.drawText('Sin incidencias documentales registradas en este período.', { x:30, y:y-30, size:10, font, color:C.grey });
+      addAnalysisBox(pg, font, `${operario} no registró incidencias documentales. Cumplimiento óptimo.`, 30, y - 55);
+    }
+  }
 
-    <div class="ana" style="margin-top:16px">
-      Informe generado automáticamente el 1 de ${MESES[new Date().getMonth()]} ${new Date().getFullYear()}.
-      Para el informe completo en PDF accede a ACM Tools → Informes.
-    </div>
-  </div>
-  <div class="ftr">Director ACM tools &nbsp;·&nbsp; Lluis Diaz</div>
-</div>
-</body></html>`;
+  // ── PAGE 3: Control de Calidad / Retornos ────────────────────────────────
+  {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
+    let y = H - 72;
+    addSectionTitle(pg, bold, 'CONTROL DE CALIDAD — RETORNOS', 30, y);
+    y -= 25;
+    if (cc.length > 0) {
+      const endY = drawTable(pg, font, bold,
+        ['Fecha','Tipo CQ','Horas','Total CQ','Descripción'],
+        cc.map((r:any) => [r.fecha||'', r.tipo_cq||'', String(r.horas||0), String(r.total_cq||0), r.descripcion||'']),
+        30, y, [65, 115, 50, 60, 245]);
+      if (endY > 60) addAnalysisBox(pg, font, totalRet === 0 ? 'Sin retornos atribuibles. Calidad óptima en la ejecución.' : `${totalRet} retornos atribuibles registrados.`, 30, endY - 10);
+    } else {
+      pg.drawText('Sin registros de control de calidad en este período.', { x:30, y:y-30, size:10, font, color:C.grey });
+      addAnalysisBox(pg, font, 'Sin retornos atribuibles. Calidad óptima en la ejecución.', 30, y - 55);
+    }
+  }
+
+  // ── PAGE 4: Limpieza ─────────────────────────────────────────────────────
+  {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
+    let y = H - 72;
+    addSectionTitle(pg, bold, `CONTROL DE LIMPIEZA — PROMEDIO: ${avgLimp}`, 30, y);
+    y -= 25;
+    if (limp.length > 0) {
+      drawTable(pg, font, bold,
+        ['Vestuario/H','Limpieza VH','Seguridad T.','Herramientas','Promedio'],
+        limp.map((r:any) => {
+          const a = (((r.vestuario_h||0)+(r.limpieza_vh||0)+(r.seguridad_t||0)+(r.herramientas||0))/4).toFixed(2);
+          return [String(r.vestuario_h||0), String(r.limpieza_vh||0), String(r.seguridad_t||0), String(r.herramientas||0), a];
+        }),
+        30, y, [107, 107, 107, 107, 107]);
+    } else {
+      pg.drawText('Sin registros de limpieza en este período.', { x:30, y:y-30, size:10, font, color:C.grey });
+    }
+  }
+
+  // ── PAGE 5: Horas Improductivas ──────────────────────────────────────────
+  {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
+    let y = H - 72;
+    addSectionTitle(pg, bold, `HORAS IMPRODUCTIVAS — TOTAL: ${totalHI}h`, 30, y);
+    y -= 25;
+    if (hi.length > 0) {
+      const endY = drawTable(pg, font, bold,
+        ['Recog. Mat.','Reunión','Mant. Furgos','Mant. Inst.','Formación','Consumibles €'],
+        hi.map((r:any) => [
+          `${r.h_recg_mat||0}h`, `${r.h_reunion||0}h`, `${r.h_mant_furgos||0}h`,
+          `${r.h_mant_instalaciones||0}h`, `${r.h_formacion||0}h`, `${r.consumibles_e||0}€`
+        ]),
+        30, y, [90, 82, 88, 82, 82, 111]);
+      if (endY > 60) addAnalysisBox(pg, font, `Total horas improductivas del mes: ${totalHI}h.`, 30, endY - 10);
+    } else {
+      pg.drawText('Sin horas improductivas registradas en este período.', { x:30, y:y-30, size:10, font, color:C.grey });
+    }
+  }
+
+  // ── PAGE 6: Visitas (solo si hay datos) ──────────────────────────────────
+  if (visitas.length > 0) {
+    const pg = pdf.addPage([595, 842]);
+    const H  = pg.getSize().height;
+    addHeader(pg, bold, font, operario, mesNombre, año);
+    addFooter(pg, font);
+    let y = H - 72;
+    addSectionTitle(pg, bold, 'VISITAS', 30, y);
+    y -= 25;
+    const cols = Object.keys(visitas[0]).filter(k => k !== 'id' && k !== 'operario' && k !== 'created_at');
+    const colW = Math.floor(535 / Math.max(cols.length, 1));
+    drawTable(pg, font, bold,
+      cols.map(c => c.replace(/_/g,' ').toUpperCase()),
+      visitas.map((r:any) => cols.map(c => String(r[c] ?? ''))),
+      30, y, cols.map(() => colW));
+  }
+
+  return pdf.save();
 }
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface EmailConfig  { jefe_id: string; email: string; }
+interface JefeOperario { operario_nombre: string; }
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
-
 Deno.serve(async (_req: Request) => {
-  const supabaseUrl  = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const resendKey    = Deno.env.get('RESEND_API_KEY');
-  const fromEmail    = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev';
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const resendKey   = Deno.env.get('RESEND_API_KEY');
+  const fromEmail   = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev';
 
-  if (!resendKey) {
-    return new Response(JSON.stringify({ error: 'RESEND_API_KEY not set' }), { status: 500 });
-  }
+  if (!resendKey) return new Response(JSON.stringify({ error: 'RESEND_API_KEY not set' }), { status: 500 });
 
   const db = createClient(supabaseUrl, serviceKey);
-
-  // Previous month
   const now      = new Date();
   const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const mes      = prevDate.getMonth() + 1;
-  const año      = prevDate.getFullYear();
-  const start    = `${año}-${String(mes).padStart(2,'0')}-01`;
-  const end      = new Date(año, mes, 0).toISOString().split('T')[0];
+  const mes   = prevDate.getMonth() + 1;
+  const año   = prevDate.getFullYear();
+  const start = `${año}-${String(mes).padStart(2,'0')}-01`;
+  const end   = new Date(año, mes, 0).toISOString().split('T')[0];
 
-  // 1. Get all active jefe email configs
-  const { data: configs } = await db
-    .from('email_config')
-    .select('jefe_id, email')
-    .eq('activo', true);
-
-  if (!configs?.length) {
-    return new Response(JSON.stringify({ sent: 0, message: 'No active configs' }));
-  }
+  const { data: configs } = await db.from('email_config').select('jefe_id, email').eq('activo', true);
+  if (!configs?.length) return new Response(JSON.stringify({ sent: 0, message: 'No active configs' }));
 
   const results: { jefe: string; operario: string; status: string }[] = [];
 
   for (const cfg of configs as EmailConfig[]) {
-    // 2. Get this jefe's agents
-    const { data: asignados } = await db
-      .from('jefe_operario')
-      .select('operario_nombre')
-      .eq('jefe_id', cfg.jefe_id);
-
+    const { data: asignados } = await db.from('jefe_operario').select('operario_nombre').eq('jefe_id', cfg.jefe_id);
     if (!asignados?.length) continue;
 
     for (const row of asignados as JefeOperario[]) {
       const op = row.operario_nombre;
 
-      // 3. Fetch Supabase data for this agent in the previous month
-      const [incRes, ccRes, limpRes, hiRes] = await Promise.all([
+      const [incRes, ccRes, limpRes, hiRes, visRes] = await Promise.all([
         db.from('incidencias').select('fecha,incidencia,puntos,observaciones').eq('operario', op).gte('fecha', start).lte('fecha', end),
         db.from('control_calidad').select('fecha,tipo_cq,horas,total_cq,descripcion').eq('operario', op).gte('fecha', start).lte('fecha', end),
         db.from('limpieza').select('vestuario_h,limpieza_vh,seguridad_t,herramientas').eq('operario', op).gte('fecha', start).lte('fecha', end),
         db.from('horas_improductivas').select('h_recg_mat,h_reunion,h_mant_furgos,h_mant_instalaciones,h_formacion,consumibles_e').eq('operario', op).gte('fecha', start).lte('fecha', end),
+        db.from('visitas').select('*').eq('operario', op).gte('fecha', start).lte('fecha', end),
       ]);
 
-      const html = buildHtml(
-        op, mes, año,
-        (incRes.data  || []) as IncRow[],
-        (ccRes.data   || []) as CCRow[],
-        (limpRes.data || []) as LimpRow[],
-        (hiRes.data   || []) as HIRow[],
-      );
+      // Generate PDF
+      const pdfBytes  = await buildPdf(op, mes, año, incRes.data||[], ccRes.data||[], limpRes.data||[], hiRes.data||[], visRes.data||[]);
+      const base64Pdf = uint8ToBase64(pdfBytes);
+      const filename  = `informe_${op.replace(/\s+/g,'_').toLowerCase()}_${MESES[mes-1].toLowerCase()}_${año}.pdf`;
 
-      // 4. Send via Resend
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
@@ -237,7 +302,23 @@ Deno.serve(async (_req: Request) => {
           from: `ACM Tools <${fromEmail}>`,
           to: [cfg.email],
           subject: `📊 Informe KPI — ${op} — ${MESES[mes-1]} ${año}`,
-          html,
+          html: `<div style="font-family:Arial,sans-serif;padding:20px;background:#f0f4fa">
+            <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1)">
+              <div style="background:linear-gradient(135deg,#0d2f6e,#1565c0);padding:22px 28px">
+                <img src="https://i.imgur.com/FIay1SB.png" alt="ACM" style="height:32px;margin-bottom:8px;display:block"/>
+                <h1 style="color:#fff;font-size:16px;margin:0 0 4px">INFORME MENSUAL DE KPI'S</h1>
+                <p style="color:#90caf9;font-size:11px;margin:0">TÉCNICO: ${op.toUpperCase()} · ${MESES[mes-1].toUpperCase()} ${año}</p>
+              </div>
+              <div style="padding:22px 28px">
+                <p style="color:#333;font-size:13px;margin:0 0 12px">Adjunto encontrarás el informe completo en PDF de <strong>${op}</strong> correspondiente a <strong>${MESES[mes-1]} ${año}</strong>.</p>
+                <p style="color:#888;font-size:11px;margin:0">Para descargar informes adicionales accede a <strong>ACM Tools → Informes</strong>.</p>
+              </div>
+              <div style="background:#f5f8ff;border-top:1px solid #dde6f4;padding:12px 28px;text-align:right;font-size:10px;color:#aaa">
+                Director ACM tools · Lluis Diaz
+              </div>
+            </div>
+          </div>`,
+          attachments: [{ filename, content: base64Pdf }],
         }),
       });
 
