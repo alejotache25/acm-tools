@@ -5,13 +5,14 @@ import { useAuth } from '../context/AuthContext';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MonthData {
-  prod_pct:      number;  // B: 80|90|95|100|105|110|120
-  ctrl_doc_pts:  number;  // E: -80|1|10|20|30|40|50|60|70|80
-  ctrl_vis_pct:  number;  // H: 100=OK | -100=KO
+  empty?:        boolean; // when true, month contributes 0 to all KPIs
+  prod_pct:      number;  // B: 0|80|90|95|100|105|110|120
+  ctrl_doc_pts:  number;  // E: -80|10|20|30|40|50|60|70|80
+  ctrl_vis_pct:  number;  // H: 100=OK | -100=KO | 0=—
   retorno_pct:   number;  // K: any %
-  herr_pct:      number;  // O: 100=OK | -100=KO
-  vehic_pct:     number;  // R: 100=OK | -100=KO
-  aseo_pct:      number;  // U: 100=OK | -100=KO
+  herr_pct:      number;  // O: 100=OK | -100=KO | 0=—
+  vehic_pct:     number;  // R: 100=OK | -100=KO | 0=—
+  aseo_pct:      number;  // U: 100=OK | -100=KO | 0=—
   h_obj:         number;  // X: objetivo horas improductivas
   h_inv:         number;  // Y: horas invertidas
   // RESUMEN INCENTIVOS fields (col E, F, G)
@@ -103,8 +104,9 @@ function lookupCtrlDoc(pts: number): number {
   return -25;   // pts < 1 → matches -80 threshold
 }
 
-// Control Visitas (A15:C16)
+// Control Visitas (A15:C16) — 0 = neutral (not applicable)
 function lookupVis(pct: number): number {
+  if (pct === 0) return 0;
   return pct >= 100 ? 25 : -25;
 }
 
@@ -174,37 +176,60 @@ export default function KPIMensual({ operario }: { operario: string }) {
     });
   };
 
+  const clearMonth = (mes: number) => {
+    setData(prev => {
+      const updated: YearData = {
+        ...prev,
+        [mes]: { ...getMonthData(prev, mes), empty: true },
+      };
+      saveYear(operario, año, updated);
+      return updated;
+    });
+  };
+
+  const restoreMonth = (mes: number) => {
+    setData(prev => {
+      const updated: YearData = {
+        ...prev,
+        [mes]: { ...getMonthData(prev, mes), empty: false },
+      };
+      saveYear(operario, año, updated);
+      return updated;
+    });
+  };
+
   // Compute all 12 months with running accumulators (mirrors spreadsheet formulas)
   const rows = useMemo(() => {
     let acc_prod = 0, acc_ctrl_doc = 0, acc_ctrl_vis = 0, acc_ret = 0;
     let acc_herr = 0, acc_vehic = 0, acc_aseo = 0, acc_total = 0;
 
     return Array.from({ length: 12 }, (_, i) => {
-      const mes = i + 1;
-      const md  = getMonthData(data, mes);
+      const mes     = i + 1;
+      const md      = getMonthData(data, mes);
+      const isEmpty = !!md.empty;
 
       // Column C: Importe Productividad = BUSCARV(B, A4:C10, 2)
-      const imp_prod     = lookupProd(md.prod_pct);
+      const imp_prod     = isEmpty ? 0 : lookupProd(md.prod_pct);
       // Column F: Importe Control Documental = BUSCARV(E, I4:K13, 2)
-      const imp_ctrl_doc = lookupCtrlDoc(md.ctrl_doc_pts);
+      const imp_ctrl_doc = isEmpty ? 0 : lookupCtrlDoc(md.ctrl_doc_pts);
       // Column I: Importe Control Visitas = BUSCARV(H, A15:C16, 2)
-      const imp_ctrl_vis = lookupVis(md.ctrl_vis_pct);
+      const imp_ctrl_vis = isEmpty ? 0 : lookupVis(md.ctrl_vis_pct);
       // Column L: %P − %R
-      const net_pct      = md.prod_pct - md.retorno_pct;
+      const net_pct      = isEmpty ? 0 : md.prod_pct - md.retorno_pct;
       // Column M: Importe Retorno = BUSCARV(L, AS4:AU44, 2) — same thresholds as productividad
-      const imp_ret      = lookupProd(net_pct);
+      const imp_ret      = isEmpty ? 0 : lookupProd(net_pct);
       // Column P: Importe Herramientas
-      const imp_herr     = lookupHerr(md.herr_pct);
+      const imp_herr     = isEmpty ? 0 : lookupHerr(md.herr_pct);
       // Column S: Importe Vehículo
-      const imp_vehic    = lookupVehic(md.vehic_pct);
+      const imp_vehic    = isEmpty ? 0 : lookupVehic(md.vehic_pct);
       // Column V: Importe Aseo personal
-      const imp_aseo     = lookupAseo(md.aseo_pct);
+      const imp_aseo     = isEmpty ? 0 : lookupAseo(md.aseo_pct);
       // Column Z: Dif = Y − X
-      const h_dif        = md.h_inv - md.h_obj;
+      const h_dif        = isEmpty ? 0 : md.h_inv - md.h_obj;
       // Column AA: % = Z / X
-      const h_pct        = md.h_obj > 0 ? (h_dif / md.h_obj) * 100 : 0;
+      const h_pct        = (!isEmpty && md.h_obj > 0) ? (h_dif / md.h_obj) * 100 : 0;
       // Column AB: Penalización = MAX(Z,0) × W3
-      const penalizacion = +(Math.max(h_dif, 0) * PENALTY_RATE).toFixed(2);
+      const penalizacion = isEmpty ? 0 : +(Math.max(h_dif, 0) * PENALTY_RATE).toFixed(2);
       // Column AC: TOTAL = F + I + M + P + S + V − AB  (C/productividad NOT in total)
       const total        = +(imp_ctrl_doc + imp_ctrl_vis + imp_ret + imp_herr + imp_vehic + imp_aseo - penalizacion).toFixed(2);
 
@@ -219,7 +244,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
       acc_total    += total;
 
       return {
-        mes, md,
+        mes, md, isEmpty,
         imp_prod,     acc_prod:     acc_prod,
         imp_ctrl_doc, acc_ctrl_doc: acc_ctrl_doc,
         imp_ctrl_vis, acc_ctrl_vis: acc_ctrl_vis,
@@ -322,6 +347,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
               <th colSpan={9}  className={thOrd}>ORDEN LIMPIEZA Y SEGURIDAD</th>
               <th colSpan={5}  className={thHI}>HORAS IMPRODUCTIVAS</th>
               <th rowSpan={3} className={`${thTot} min-w-[80px]`}>TOTAL</th>
+              <th rowSpan={3} className={`${thBase} bg-slate-500 min-w-[36px]`}> </th>
             </tr>
 
             {/* Level 2 — Sub-sections */}
@@ -384,7 +410,9 @@ export default function KPIMensual({ operario }: { operario: string }) {
             {rows.map(r => {
               const isCurrent = r.mes === curMes;
               const isLocked = isOperario && !isCurrent;
-              const rowBg = isCurrent ? 'bg-blue-50' : 'bg-white hover:bg-slate-50/80';
+              const locked = isLocked || r.isEmpty;
+              const rowBg = r.isEmpty ? 'bg-slate-100 opacity-60' : isCurrent ? 'bg-blue-50' : 'bg-white hover:bg-slate-50/80';
+              const dash = <span className="text-slate-300 text-xs">—</span>;
 
               return (
                 <tr key={r.mes} className={`${rowBg} transition-colors`}>
@@ -399,17 +427,19 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
                   {/* B: %Obj Productividad (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.prod_pct}
-                      onChange={e => updateField(r.mes, 'prod_pct', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-16`}
-                    >
-                      {PROD_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? '< 80%' : `${v}%`}</option>)}
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.prod_pct}
+                        onChange={e => updateField(r.mes, 'prod_pct', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-16`}
+                      >
+                        {PROD_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? '< 80%' : `${v}%`}</option>)}
+                      </select>
+                    )}
                   </td>
                   {/* C: Importe Productividad (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_prod)}`}>{euro(r.imp_prod)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_prod)}`}>{r.isEmpty ? '—' : euro(r.imp_prod)}</td>
                   {/* D: Acumulado Productividad (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_prod)}`}>{euro(r.acc_prod)}</td>
 
@@ -417,36 +447,41 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
                   {/* E: Puntos Obj CtrlDoc (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.ctrl_doc_pts}
-                      onChange={e => updateField(r.mes, 'ctrl_doc_pts', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-16`}
-                    >
-                      {CTRL_DOC_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.ctrl_doc_pts}
+                        onChange={e => updateField(r.mes, 'ctrl_doc_pts', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-16`}
+                      >
+                        {CTRL_DOC_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    )}
                   </td>
                   {/* F: Importe CtrlDoc (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_ctrl_doc)}`}>{euro(r.imp_ctrl_doc)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_ctrl_doc)}`}>{r.isEmpty ? '—' : euro(r.imp_ctrl_doc)}</td>
                   {/* G: Acumulado CtrlDoc (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_ctrl_doc)}`}>{euro(r.acc_ctrl_doc)}</td>
 
                   {/* ── CALIDAD — Control Visitas ── */}
 
-                  {/* H: %Obj Visitas OK/KO (manual select) */}
+                  {/* H: %Obj Visitas OK/KO/— (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.ctrl_vis_pct}
-                      onChange={e => updateField(r.mes, 'ctrl_vis_pct', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-16`}
-                    >
-                      <option value={100}>OK</option>
-                      <option value={-100}>KO</option>
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.ctrl_vis_pct}
+                        onChange={e => updateField(r.mes, 'ctrl_vis_pct', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-16`}
+                      >
+                        <option value={0}>—</option>
+                        <option value={100}>OK</option>
+                        <option value={-100}>KO</option>
+                      </select>
+                    )}
                   </td>
                   {/* I: Importe Visitas (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_ctrl_vis)}`}>{euro(r.imp_ctrl_vis)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_ctrl_vis)}`}>{r.isEmpty ? '—' : euro(r.imp_ctrl_vis)}</td>
                   {/* J: Acumulado Visitas (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_ctrl_vis)}`}>{euro(r.acc_ctrl_vis)}</td>
 
@@ -454,77 +489,88 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
                   {/* K: %Obj Retorno (manual number) */}
                   <td className={tdi}>
-                    <input
-                      type="number" step="1" min="0" max="100"
-                      value={r.md.retorno_pct}
-                      onChange={e => updateField(r.mes, 'retorno_pct', parseFloat(e.target.value) || 0)}
-                      disabled={isLocked}
-                      className={numCls}
-                    />
+                    {r.isEmpty ? dash : (
+                      <input
+                        type="number" step="1" min="0" max="100"
+                        value={r.md.retorno_pct}
+                        onChange={e => updateField(r.mes, 'retorno_pct', parseFloat(e.target.value) || 0)}
+                        disabled={locked}
+                        className={numCls}
+                      />
+                    )}
                   </td>
                   {/* L: %P−%R (auto) */}
-                  <td className={`${td} ${r.net_pct >= 100 ? 'text-green-700' : r.net_pct >= 80 ? 'text-amber-600' : 'text-red-600'} font-semibold`}>
-                    {r.net_pct}%
+                  <td className={`${td} font-semibold ${r.isEmpty ? 'text-slate-300' : r.net_pct >= 100 ? 'text-green-700' : r.net_pct >= 80 ? 'text-amber-600' : 'text-red-600'}`}>
+                    {r.isEmpty ? '—' : `${r.net_pct}%`}
                   </td>
                   {/* M: Importe Retorno (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_ret)}`}>{euro(r.imp_ret)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_ret)}`}>{r.isEmpty ? '—' : euro(r.imp_ret)}</td>
                   {/* N: Acumulado Retorno (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_ret)}`}>{euro(r.acc_ret)}</td>
 
                   {/* ── ORDEN LIMPIEZA — Herramientas ── */}
 
-                  {/* O: Estado Herramientas OK/KO (manual select) */}
+                  {/* O: Estado Herramientas OK/KO/— (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.herr_pct}
-                      onChange={e => updateField(r.mes, 'herr_pct', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-14`}
-                    >
-                      <option value={100}>OK</option>
-                      <option value={-100}>KO</option>
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.herr_pct}
+                        onChange={e => updateField(r.mes, 'herr_pct', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-14`}
+                      >
+                        <option value={0}>—</option>
+                        <option value={100}>OK</option>
+                        <option value={-100}>KO</option>
+                      </select>
+                    )}
                   </td>
                   {/* P: Importe Herramientas (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_herr)}`}>{euro(r.imp_herr)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_herr)}`}>{r.isEmpty ? '—' : euro(r.imp_herr)}</td>
                   {/* Q: Acumulado Herramientas (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_herr)}`}>{euro(r.acc_herr)}</td>
 
                   {/* ── ORDEN LIMPIEZA — Vehículo ── */}
 
-                  {/* R: Estado Vehículo OK/KO (manual select) */}
+                  {/* R: Estado Vehículo OK/KO/— (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.vehic_pct}
-                      onChange={e => updateField(r.mes, 'vehic_pct', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-14`}
-                    >
-                      <option value={100}>OK</option>
-                      <option value={-100}>KO</option>
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.vehic_pct}
+                        onChange={e => updateField(r.mes, 'vehic_pct', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-14`}
+                      >
+                        <option value={0}>—</option>
+                        <option value={100}>OK</option>
+                        <option value={-100}>KO</option>
+                      </select>
+                    )}
                   </td>
                   {/* S: Importe Vehículo (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_vehic)}`}>{euro(r.imp_vehic)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_vehic)}`}>{r.isEmpty ? '—' : euro(r.imp_vehic)}</td>
                   {/* T: Acumulado Vehículo (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_vehic)}`}>{euro(r.acc_vehic)}</td>
 
                   {/* ── ORDEN LIMPIEZA — Aseo personal ── */}
 
-                  {/* U: Estado Aseo OK/KO (manual select) */}
+                  {/* U: Estado Aseo OK/KO/— (manual select) */}
                   <td className={tdi}>
-                    <select
-                      value={r.md.aseo_pct}
-                      onChange={e => updateField(r.mes, 'aseo_pct', Number(e.target.value))}
-                      disabled={isLocked}
-                      className={`${selectCls} w-14`}
-                    >
-                      <option value={100}>OK</option>
-                      <option value={-100}>KO</option>
-                    </select>
+                    {r.isEmpty ? dash : (
+                      <select
+                        value={r.md.aseo_pct}
+                        onChange={e => updateField(r.mes, 'aseo_pct', Number(e.target.value))}
+                        disabled={locked}
+                        className={`${selectCls} w-14`}
+                      >
+                        <option value={0}>—</option>
+                        <option value={100}>OK</option>
+                        <option value={-100}>KO</option>
+                      </select>
+                    )}
                   </td>
                   {/* V: Importe Aseo (auto) */}
-                  <td className={`${td} ${clrEuro(r.imp_aseo)}`}>{euro(r.imp_aseo)}</td>
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : clrEuro(r.imp_aseo)}`}>{r.isEmpty ? '—' : euro(r.imp_aseo)}</td>
                   {/* W: Acumulado Aseo (auto) */}
                   <td className={`${td} ${clrEuro(r.acc_aseo)}`}>{euro(r.acc_aseo)}</td>
 
@@ -532,40 +578,61 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
                   {/* X: H.Objetivo (manual number) */}
                   <td className={tdi}>
-                    <input
-                      type="number" step="0.5" min="0"
-                      value={r.md.h_obj}
-                      onChange={e => updateField(r.mes, 'h_obj', parseFloat(e.target.value) || 0)}
-                      disabled={isLocked}
-                      className={numCls}
-                    />
+                    {r.isEmpty ? dash : (
+                      <input
+                        type="number" step="0.5" min="0"
+                        value={r.md.h_obj}
+                        onChange={e => updateField(r.mes, 'h_obj', parseFloat(e.target.value) || 0)}
+                        disabled={locked}
+                        className={numCls}
+                      />
+                    )}
                   </td>
                   {/* Y: H.Invertidas (manual number) */}
                   <td className={tdi}>
-                    <input
-                      type="number" step="0.5" min="0"
-                      value={r.md.h_inv}
-                      onChange={e => updateField(r.mes, 'h_inv', parseFloat(e.target.value) || 0)}
-                      disabled={isLocked}
-                      className={numCls}
-                    />
+                    {r.isEmpty ? dash : (
+                      <input
+                        type="number" step="0.5" min="0"
+                        value={r.md.h_inv}
+                        onChange={e => updateField(r.mes, 'h_inv', parseFloat(e.target.value) || 0)}
+                        disabled={locked}
+                        className={numCls}
+                      />
+                    )}
                   </td>
                   {/* Z: Dif = Y − X (auto) */}
-                  <td className={`${td} ${r.h_dif > 0 ? 'text-red-600 font-semibold' : r.h_dif < 0 ? 'text-green-600' : 'text-slate-400'}`}>
-                    {r.h_dif === 0 ? '—' : `${r.h_dif > 0 ? '+' : ''}${r.h_dif.toFixed(1)}h`}
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : r.h_dif > 0 ? 'text-red-600 font-semibold' : r.h_dif < 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                    {r.isEmpty ? '—' : r.h_dif === 0 ? '—' : `${r.h_dif > 0 ? '+' : ''}${r.h_dif.toFixed(1)}h`}
                   </td>
                   {/* AA: % = Z/X (auto) */}
-                  <td className={`${td} text-slate-600`}>
-                    {r.md.h_obj > 0 ? `${r.h_pct.toFixed(0)}%` : '—'}
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : 'text-slate-600'}`}>
+                    {r.isEmpty ? '—' : r.md.h_obj > 0 ? `${r.h_pct.toFixed(0)}%` : '—'}
                   </td>
                   {/* AB: Penalización = MAX(Z,0) × 39 (auto) */}
-                  <td className={`${td} ${r.penalizacion > 0 ? 'text-red-600 font-semibold' : 'text-slate-400'}`}>
-                    {r.penalizacion > 0 ? `−${r.penalizacion.toFixed(0)} €` : '—'}
+                  <td className={`${td} ${r.isEmpty ? 'text-slate-300' : r.penalizacion > 0 ? 'text-red-600 font-semibold' : 'text-slate-400'}`}>
+                    {r.isEmpty ? '—' : r.penalizacion > 0 ? `−${r.penalizacion.toFixed(0)} €` : '—'}
                   </td>
 
                   {/* ── TOTAL (AC) ── */}
-                  <td className={`${td} font-bold text-sm ${clrEuro(r.total)}`}>
-                    {euro(r.total)}
+                  <td className={`${td} font-bold text-sm ${r.isEmpty ? 'text-slate-300' : clrEuro(r.total)}`}>
+                    {r.isEmpty ? '—' : euro(r.total)}
+                  </td>
+
+                  {/* ── LIMPIAR / RESTAURAR ── */}
+                  <td className="px-1 py-1 border border-slate-200 text-center">
+                    {r.isEmpty ? (
+                      <button
+                        onClick={() => restoreMonth(r.mes)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors leading-tight"
+                        title="Restaurar mes"
+                      >↺</button>
+                    ) : (
+                      <button
+                        onClick={() => clearMonth(r.mes)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-500 transition-colors leading-tight"
+                        title="Limpiar mes (poner a 0)"
+                      >×</button>
+                    )}
                   </td>
                 </tr>
               );
@@ -613,6 +680,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
               <td className={`px-3 py-2 text-center border border-slate-700 text-base ${ann.acc_total >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                 {euro(ann.acc_total)}
               </td>
+              <td className="border border-slate-700" />
             </tr>
           </tbody>
         </table>
