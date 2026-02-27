@@ -36,14 +36,16 @@ export default function Login() {
     setError('');
     try {
       const hashed = await hashPin(pin);
-      const { data, error: dbErr } = await supabase
+      const { data } = await supabase
         .from('usuarios')
         .select('id, nombre, rol')
         .eq('nombre', nombre.trim())
         .eq('pin', hashed)
-        .single();
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
 
-      if (dbErr || !data) {
+      if (!data) {
         setError('Usuario o PIN incorrecto');
         return;
       }

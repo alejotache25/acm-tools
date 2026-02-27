@@ -29,7 +29,6 @@ const TABS = [
   { id: 'permisos',       label: 'Permisos y Roles' },
   { id: 'operarios',      label: 'Operarios' },
   { id: 'jefes',          label: 'Jefes' },
-  { id: 'usuarios',       label: 'Usuarios Operario' },
   { id: 'config',         label: 'Configuración' },
 ];
 
@@ -451,24 +450,49 @@ function PermisosPanel() {
 }
 
 // ─── Operarios Panel ─────────────────────────────────────────────────────────
+interface JefeOption { id: string; nombre: string }
 function OperariosPanel() {
   const [operarios, setOperarios] = useState<Operario[]>([]);
+  const [jefes, setJefes] = useState<JefeOption[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Operario | null>(null);
-  const [form, setForm] = useState({ nombre: '', email: '', activo: true, pin: '' });
+  const [form, setForm] = useState({ nombre: '', email: '', activo: true, pin: '', jefesAsignados: [] as string[] });
 
   const load = async () => {
-    const { data } = await supabase.from('operarios').select('*').order('nombre');
-    setOperarios(data || []);
+    const [{ data: o }, { data: j }] = await Promise.all([
+      supabase.from('operarios').select('*').order('nombre'),
+      supabase.from('usuarios').select('id, nombre').eq('rol', 'jefe').order('nombre'),
+    ]);
+    setOperarios(o || []);
+    setJefes(j || []);
   };
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm({ nombre: '', email: '', activo: true, pin: '' }); setShowModal(true); };
-  const openEdit = (o: Operario) => { setEditing(o); setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo, pin: '' }); setShowModal(true); };
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ nombre: '', email: '', activo: true, pin: '', jefesAsignados: [] });
+    setShowModal(true);
+  };
+
+  const openEdit = async (o: Operario) => {
+    const { data } = await supabase.from('jefe_operario').select('jefe_id').eq('operario_nombre', o.nombre);
+    setEditing(o);
+    setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo, pin: '', jefesAsignados: (data || []).map(r => r.jefe_id) });
+    setShowModal(true);
+  };
+
+  const toggleJefe = (jefeId: string) => {
+    setForm(f => ({
+      ...f,
+      jefesAsignados: f.jefesAsignados.includes(jefeId)
+        ? f.jefesAsignados.filter(id => id !== jefeId)
+        : [...f.jefesAsignados, jefeId],
+    }));
+  };
 
   const del = async (o: Operario) => {
-    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones de jefes y su acceso al sistema.\nEsta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones y su acceso al sistema.\nEsta acción no se puede deshacer.`)) return;
     await supabase.from('jefe_operario').delete().eq('operario_nombre', o.nombre);
     await supabase.from('usuarios').delete().eq('nombre', o.nombre).eq('rol', 'operario');
     await supabase.from('operarios').delete().eq('id', o.id);
@@ -479,14 +503,11 @@ function OperariosPanel() {
     const nombre = form.nombre.trim();
     if (!nombre) return;
     if (editing) {
-      // Update operario record
       await supabase.from('operarios').update({ nombre, email: form.email, activo: form.activo }).eq('id', editing.id);
-      // If name changed, update related tables
       if (nombre !== editing.nombre) {
         await supabase.from('usuarios').update({ nombre }).eq('nombre', editing.nombre).eq('rol', 'operario');
         await supabase.from('jefe_operario').update({ operario_nombre: nombre }).eq('operario_nombre', editing.nombre);
       }
-      // Update PIN if provided
       if (form.pin.length === 4) {
         const hashed = await hashPin(form.pin);
         await supabase.from('usuarios').update({ pin: hashed }).eq('nombre', nombre).eq('rol', 'operario');
@@ -495,7 +516,16 @@ function OperariosPanel() {
       if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
       const hashed = await hashPin(form.pin);
       await supabase.from('operarios').insert({ nombre, email: form.email, activo: form.activo });
+      // Delete any existing usuario record to avoid duplicates, then insert fresh
+      await supabase.from('usuarios').delete().eq('nombre', nombre).eq('rol', 'operario');
       await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario' });
+    }
+    // Sync jefe assignments
+    await supabase.from('jefe_operario').delete().eq('operario_nombre', nombre);
+    if (form.jefesAsignados.length > 0) {
+      await supabase.from('jefe_operario').insert(
+        form.jefesAsignados.map(jefeId => ({ jefe_id: jefeId, operario_nombre: nombre }))
+      );
     }
     setShowModal(false);
     load();
@@ -524,7 +554,7 @@ function OperariosPanel() {
             {operarios.map(o => (
               <tr key={o.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 font-medium text-slate-800">{o.nombre}</td>
-                <td className="px-4 py-2 text-slate-600">{o.email}</td>
+                <td className="px-4 py-2 text-slate-600">{o.email || '—'}</td>
                 <td className="px-4 py-2 text-center">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${o.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {o.activo ? 'Activo' : 'Inactivo'}
@@ -550,7 +580,7 @@ function OperariosPanel() {
       </div>
 
       {showModal && (
-        <Modal title={editing ? 'Editar operario' : 'Nuevo operario'} onClose={() => setShowModal(false)}>
+        <Modal title={editing ? 'Editar operario' : 'Nuevo operario'} onClose={() => setShowModal(false)} size="lg">
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
@@ -578,6 +608,23 @@ function OperariosPanel() {
               {!editing && (
                 <p className="text-xs text-slate-400 mt-1">El operario usará este PIN para acceder al sistema en modo lectura.</p>
               )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Jefes asignados</label>
+              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                {jefes.map(j => (
+                  <label key={j.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.jefesAsignados.includes(j.id)}
+                      onChange={() => toggleJefe(j.id)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-slate-700">{j.nombre}</span>
+                  </label>
+                ))}
+                {jefes.length === 0 && <p className="text-slate-400 text-sm col-span-2">No hay jefes disponibles</p>}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="activo" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
@@ -753,119 +800,6 @@ function JefesPanel() {
   );
 }
 
-// ─── Usuarios Operario Panel ──────────────────────────────────────────────────
-function UsuariosPanel() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [operarios, setOperarios] = useState<string[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Usuario | null>(null);
-  const [form, setForm] = useState({ nombre: '', pin: '' });
-
-  const load = async () => {
-    const [{ data: u }, { data: o }] = await Promise.all([
-      supabase.from('usuarios').select('*').eq('rol', 'operario').order('nombre'),
-      supabase.from('operarios').select('nombre').eq('activo', true).order('nombre'),
-    ]);
-    setUsuarios(u || []);
-    setOperarios((o || []).map(r => r.nombre));
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const openAdd = () => { setEditing(null); setForm({ nombre: '', pin: '' }); setShowModal(true); };
-  const openEdit = (u: Usuario) => { setEditing(u); setForm({ nombre: u.nombre, pin: '' }); setShowModal(true); };
-
-  const save = async () => {
-    if (!form.nombre.trim()) return;
-    if (editing) {
-      const updates: Record<string, string> = { nombre: form.nombre };
-      if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
-      await supabase.from('usuarios').update(updates).eq('id', editing.id);
-    } else {
-      if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
-      const hashed = await hashPin(form.pin);
-      await supabase.from('usuarios').insert({ nombre: form.nombre, pin: hashed, rol: 'operario' });
-    }
-    setShowModal(false);
-    load();
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-slate-800">Usuarios Operario</h2>
-        <button onClick={openAdd} className="flex items-center gap-1 bg-gradient-to-br from-blue-500 to-blue-700 text-white text-sm px-3 py-2 rounded-lg hover:opacity-90">
-          <PlusIcon className="h-4 w-4" /> Añadir
-        </button>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg">
-        <table className="min-w-full">
-          <thead className="bg-slate-600 text-slate-100 text-sm">
-            <tr>
-              <th className="px-4 py-2 text-left">Nombre</th>
-              <th className="px-4 py-2 text-center">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-300 text-sm">
-            {usuarios.map(u => (
-              <tr key={u.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 font-medium text-slate-800">{u.nombre}</td>
-                <td className="px-4 py-2 text-center">
-                  <button onClick={() => openEdit(u)} className="p-1 rounded hover:bg-slate-100">
-                    <PencilIcon className="h-4 w-4 text-blue-600" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {usuarios.length === 0 && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-400">Sin usuarios operario</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {showModal && (
-        <Modal title={editing ? 'Editar usuario operario' : 'Nuevo usuario operario'} onClose={() => setShowModal(false)}>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
-              {editing ? (
-                <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                  className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
-              ) : (
-                <select value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                  className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">— Seleccionar operario —</option>
-                  {operarios.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                PIN {editing ? '(dejar vacío para no cambiar)' : '(4 dígitos) *'}
-              </label>
-              <input
-                type="password"
-                value={form.pin}
-                onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                maxLength={4}
-                inputMode="numeric"
-                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 tracking-widest"
-                placeholder="••••"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm hover:bg-slate-300">Cancelar</button>
-              <button onClick={save} className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700">Guardar</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
 // ─── Config Panel ─────────────────────────────────────────────────────────────
 function ConfigPanel() {
   const [form, setForm] = useState({ webhook_url: '', nombre_empresa: '', logo_url: '' });
@@ -943,7 +877,6 @@ export default function Admin() {
           {tab === 'permisos'       && <PermisosPanel />}
           {tab === 'operarios' && <OperariosPanel />}
           {tab === 'jefes'     && <JefesPanel />}
-          {tab === 'usuarios'  && <UsuariosPanel />}
           {tab === 'config'    && <ConfigPanel />}
         </div>
       </div>
