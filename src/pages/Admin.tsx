@@ -455,7 +455,7 @@ function OperariosPanel() {
   const [operarios, setOperarios] = useState<Operario[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Operario | null>(null);
-  const [form, setForm] = useState({ nombre: '', email: '', activo: true });
+  const [form, setForm] = useState({ nombre: '', email: '', activo: true, pin: '' });
 
   const load = async () => {
     const { data } = await supabase.from('operarios').select('*').order('nombre');
@@ -464,22 +464,38 @@ function OperariosPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm({ nombre: '', email: '', activo: true }); setShowModal(true); };
-  const openEdit = (o: Operario) => { setEditing(o); setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo }); setShowModal(true); };
+  const openAdd = () => { setEditing(null); setForm({ nombre: '', email: '', activo: true, pin: '' }); setShowModal(true); };
+  const openEdit = (o: Operario) => { setEditing(o); setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo, pin: '' }); setShowModal(true); };
 
   const del = async (o: Operario) => {
-    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones de jefes.\nEsta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones de jefes y su acceso al sistema.\nEsta acción no se puede deshacer.`)) return;
     await supabase.from('jefe_operario').delete().eq('operario_nombre', o.nombre);
+    await supabase.from('usuarios').delete().eq('nombre', o.nombre).eq('rol', 'operario');
     await supabase.from('operarios').delete().eq('id', o.id);
     load();
   };
 
   const save = async () => {
-    if (!form.nombre.trim()) return;
+    const nombre = form.nombre.trim();
+    if (!nombre) return;
     if (editing) {
-      await supabase.from('operarios').update(form).eq('id', editing.id);
+      // Update operario record
+      await supabase.from('operarios').update({ nombre, email: form.email, activo: form.activo }).eq('id', editing.id);
+      // If name changed, update related tables
+      if (nombre !== editing.nombre) {
+        await supabase.from('usuarios').update({ nombre }).eq('nombre', editing.nombre).eq('rol', 'operario');
+        await supabase.from('jefe_operario').update({ operario_nombre: nombre }).eq('operario_nombre', editing.nombre);
+      }
+      // Update PIN if provided
+      if (form.pin.length === 4) {
+        const hashed = await hashPin(form.pin);
+        await supabase.from('usuarios').update({ pin: hashed }).eq('nombre', nombre).eq('rol', 'operario');
+      }
     } else {
-      await supabase.from('operarios').insert(form);
+      if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
+      const hashed = await hashPin(form.pin);
+      await supabase.from('operarios').insert({ nombre, email: form.email, activo: form.activo });
+      await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario' });
     }
     setShowModal(false);
     load();
@@ -545,6 +561,23 @@ function OperariosPanel() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                PIN de acceso {editing ? '(dejar vacío para no cambiar)' : '(4 dígitos) *'}
+              </label>
+              <input
+                type="password"
+                value={form.pin}
+                onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                maxLength={4}
+                inputMode="numeric"
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 tracking-widest"
+                placeholder="••••"
+              />
+              {!editing && (
+                <p className="text-xs text-slate-400 mt-1">El operario usará este PIN para acceder al sistema en modo lectura.</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="activo" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
