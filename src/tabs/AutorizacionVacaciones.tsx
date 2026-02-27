@@ -97,11 +97,22 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
 
       if (error) throw error;
 
-      // Email to operario — email stored in ausencias.operario_email when request was created
-      if (modal.operario_email) {
-        try {
+      // Email to operario
+      // 1st choice: email stored on the ausencia when operario submitted it
+      // 2nd choice: fallback lookup in operarios table (for old records or missing email)
+      try {
+        let toEmail = modal.operario_email?.trim() || null;
+        if (!toEmail) {
+          const { data: opRow } = await supabase
+            .from('operarios')
+            .select('email')
+            .eq('nombre', modal.nombre)
+            .maybeSingle();
+          toEmail = opRow?.email?.trim() || null;
+        }
+        if (toEmail) {
           await sendResolucionEmail({
-            to_email:    modal.operario_email,
+            to_email:    toEmail,
             to_name:     modal.nombre,
             tipo:        tipoLabel(modal.tipo),
             fecha_inicio: fmtFecha(modal.fecha_inicio),
@@ -111,8 +122,8 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
             comentario:   comentario.trim() || '—',
             jefe_nombre:  user?.nombre ?? '',
           });
-        } catch (_) { /* email errors are non-blocking */ }
-      }
+        }
+      } catch (_) { /* email errors are non-blocking */ }
 
       setAusencias(prev => prev.map(a =>
         a.id === modal.id
