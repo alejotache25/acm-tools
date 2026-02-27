@@ -321,12 +321,23 @@ function PermisosPanel() {
     setPermisos(p => ({ ...p, [rol]: { ...p[rol], [id]: !p[rol][id] } }));
 
   const save = async () => {
-    if (!configId) return;
+    if (!configId) {
+      setSaveError('No se encontró la fila de configuración. Recarga la página.');
+      return;
+    }
     setSaveError('');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('config') as any).update({ permisos_roles: permisos }).eq('id', configId);
+    const { data, error } = await (supabase.from('config') as any)
+      .update({ permisos_roles: permisos })
+      .eq('id', configId)
+      .select('id')
+      .single();
     if (error) {
-      setSaveError(error.message || 'Error al guardar. Comprueba los permisos de la base de datos.');
+      setSaveError(`Error al guardar: ${error.message}`);
+      return;
+    }
+    if (!data) {
+      setSaveError('La base de datos no actualizó ninguna fila. Comprueba las políticas RLS de la tabla "config" en Supabase (necesita permiso UPDATE).');
       return;
     }
     setSaved(true);
@@ -830,17 +841,14 @@ function ConfigPanel() {
 
   const save = async () => {
     setSaveError('');
-    let error;
     if (configId) {
-      ({ error } = await supabase.from('config').update(form).eq('id', configId));
+      const { data, error } = await supabase.from('config').update(form).eq('id', configId).select('id').single();
+      if (error) { setSaveError(`Error al guardar: ${error.message}`); return; }
+      if (!data) { setSaveError('La base de datos no actualizó ninguna fila. Comprueba las políticas RLS de la tabla "config".'); return; }
     } else {
-      const { data, error: insertError } = await supabase.from('config').insert(form).select('id').single();
-      error = insertError;
+      const { data, error } = await supabase.from('config').insert(form).select('id').single();
+      if (error) { setSaveError(`Error al guardar: ${error.message}`); return; }
       if (data) setConfigId(data.id);
-    }
-    if (error) {
-      setSaveError(error.message || 'Error al guardar la configuración.');
-      return;
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
