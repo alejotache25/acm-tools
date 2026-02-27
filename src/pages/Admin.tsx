@@ -297,7 +297,7 @@ function PermisosPanel() {
   const [needsMigration, setNeedsMigration] = useState(false);
 
   useEffect(() => {
-    supabase.from('config').select('id, permisos_roles').limit(1).maybeSingle().then(({ data, error }) => {
+    supabase.from('config').select('*').limit(1).maybeSingle().then(({ data, error }) => {
       if (error) { setLoading(false); return; }
       if (data) {
         setConfigId(data.id);
