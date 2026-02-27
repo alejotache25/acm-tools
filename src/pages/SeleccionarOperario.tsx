@@ -7,14 +7,16 @@ import TabNav from '../components/TabNav';
 import DashboardPanel from '../tabs/Dashboard';
 import KPIDashboard, { buildSummary, rowToMonthData, MESES, MESES_FULL } from '../tabs/KPIDashboard';
 import type { YearData } from '../tabs/KPIDashboard';
+import AutorizacionVacaciones from '../tabs/AutorizacionVacaciones';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const JEFE_TABS = [
-  { id: 'tecnicos',  label: 'Técnicos' },
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'kpi',       label: 'KPI Mensual' },
-  { id: 'semaforo',  label: 'Semáforo KPI' },
+  { id: 'tecnicos',   label: 'Técnicos' },
+  { id: 'dashboard',  label: 'Dashboard' },
+  { id: 'kpi',        label: 'KPI Mensual' },
+  { id: 'semaforo',   label: 'Semáforo KPI' },
+  { id: 'vacaciones', label: 'Autorización Vacaciones' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -363,10 +365,11 @@ export default function SeleccionarOperario() {
         <h1 className="text-xl font-bold text-slate-800 mb-4">Panel de Jefe</h1>
         <TabNav tabs={JEFE_TABS} active={tab} onChange={setTab} />
         <div className="mt-2">
-          {tab === 'tecnicos'  && <TecnicosTab operarios={operarios} onRemove={removeOperario} />}
-          {tab === 'dashboard' && <DashboardPanel operariosFilter={operarios} />}
-          {tab === 'kpi'       && <KPIDashboard operariosFilter={operarios} />}
-          {tab === 'semaforo'  && <SemaforoKPIPanel operarios={operarios} />}
+          {tab === 'tecnicos'   && <TecnicosTab operarios={operarios} onRemove={removeOperario} />}
+          {tab === 'dashboard'  && <DashboardPanel operariosFilter={operarios} />}
+          {tab === 'kpi'        && <KPIDashboard operariosFilter={operarios} />}
+          {tab === 'semaforo'   && <SemaforoKPIPanel operarios={operarios} />}
+          {tab === 'vacaciones' && <AutorizacionVacaciones operarios={operarios} />}
         </div>
       </div>
     </div>

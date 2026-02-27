@@ -10,6 +10,7 @@ import {
   ChartBarIcon,
   TableCellsIcon,
   SignalIcon,
+  CalendarDaysIcon,
   ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 import TabNav from '../components/TabNav';
@@ -22,6 +23,7 @@ import Issus from '../tabs/Issus';
 import KPIMensual from '../tabs/KPIMensual';
 import KPIDashboard, { buildSummary, rowToMonthData, MESES_FULL } from '../tabs/KPIDashboard';
 import type { YearData } from '../tabs/KPIDashboard';
+import MisAusencias from '../tabs/MisAusencias';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -41,6 +43,7 @@ const OPERARIO_TABS = [
   { id: 'dashboard', label: 'Dashboard',    Icon: ChartBarIcon },
   { id: 'kpi',       label: 'KPI Mensual',  Icon: TableCellsIcon },
   { id: 'semaforo',  label: 'Semáforo KPI', Icon: SignalIcon },
+  { id: 'ausencias', label: 'Mis Ausencias', Icon: CalendarDaysIcon },
 ];
 
 // ─── Semáforo KPI (operario view — single operario) ──────────────────────────
@@ -271,12 +274,13 @@ export default function Operario() {
                 </>
               )}
 
-              {/* Operario: vistas KPI de solo lectura */}
+              {/* Operario: vistas KPI de solo lectura + mis ausencias */}
               {isOperario && (
                 <>
                   {activeTab === 'dashboard' && <KPIDashboard operariosFilter={[operario]} />}
                   {activeTab === 'kpi'       && <KPIMensual operario={operario} readOnly={true} />}
                   {activeTab === 'semaforo'  && <SemaforoOperario operario={operario} />}
+                  {activeTab === 'ausencias' && <MisAusencias operario={operario} />}
                 </>
               )}
 
