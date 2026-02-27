@@ -20,6 +20,7 @@ export async function sendSolicitudEmail(params: {
   fecha_inicio:    string;
   fecha_fin:       string;
   dias:            number;
+  app_url?:        string;
 }) {
   await invoke({ type: 'solicitud', ...params });
 }

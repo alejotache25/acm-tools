@@ -25,7 +25,9 @@ Deno.serve(async (req: Request) => {
 
   // ── Email to jefe when operario submits a request ──
   if (type === 'solicitud') {
-    const { operario_nombre, tipo, fecha_inicio, fecha_fin, dias } = body;
+    const { operario_nombre, tipo, fecha_inicio, fecha_fin, dias, app_url } = body;
+    const linkUrl = app_url ? `${app_url}/seleccionar-operario` : null;
+
     subject = `📅 Nueva solicitud de ${operario_nombre}: ${tipo}`;
     html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
@@ -60,6 +62,13 @@ Deno.serve(async (req: Request) => {
               🔔 La solicitud está <strong>pendiente de revisión</strong>. Accede a la app para aprobarla o rechazarla.
             </p>
           </div>
+          ${linkUrl ? `
+          <div style="margin-top:20px;text-align:center">
+            <a href="${linkUrl}"
+               style="display:inline-block;background:#1e3a5f;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px">
+              Revisar solicitud en ACM Tools →
+            </a>
+          </div>` : ''}
         </div>
       </div>`;
 

@@ -96,17 +96,17 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
 
       if (error) throw error;
 
-      // Email to operario
+      // Email to operario — look up email from operarios table (avoids cross-user RLS on usuarios)
       try {
-        const { data: opUser } = await supabase
-          .from('usuarios')
+        const { data: opRow } = await supabase
+          .from('operarios')
           .select('email')
           .eq('nombre', modal.nombre)
           .maybeSingle();
 
-        if (opUser?.email) {
+        if (opRow?.email) {
           await sendResolucionEmail({
-            to_email:    opUser.email,
+            to_email:    opRow.email,
             to_name:     modal.nombre,
             tipo:        tipoLabel(modal.tipo),
             fecha_inicio: fmtFecha(modal.fecha_inicio),

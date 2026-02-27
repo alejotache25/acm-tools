@@ -133,6 +133,7 @@ export default function MisAusencias({ operario }: { operario: string }) {
               fecha_inicio:    fmtFecha(fechaInicio),
               fecha_fin:       fmtFecha(fechaFin),
               dias,
+              app_url:         window.location.origin,
             });
           }
         }
