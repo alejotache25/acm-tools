@@ -452,15 +452,15 @@ function PermisosPanel() {
 // ─── Operarios Panel ─────────────────────────────────────────────────────────
 interface JefeOption { id: string; nombre: string }
 function OperariosPanel() {
-  const [operarios, setOperarios] = useState<Operario[]>([]);
+  const [operarios, setOperarios] = useState<Usuario[]>([]);
   const [jefes, setJefes] = useState<JefeOption[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<Operario | null>(null);
-  const [form, setForm] = useState({ nombre: '', email: '', activo: true, pin: '', jefesAsignados: [] as string[] });
+  const [editing, setEditing] = useState<Usuario | null>(null);
+  const [form, setForm] = useState({ nombre: '', pin: '', email: '', jefesAsignados: [] as string[] });
 
   const load = async () => {
     const [{ data: o }, { data: j }] = await Promise.all([
-      supabase.from('operarios').select('*').order('nombre'),
+      supabase.from('usuarios').select('*').eq('rol', 'operario').order('nombre'),
       supabase.from('usuarios').select('id, nombre').eq('rol', 'jefe').order('nombre'),
     ]);
     setOperarios(o || []);
@@ -471,14 +471,14 @@ function OperariosPanel() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ nombre: '', email: '', activo: true, pin: '', jefesAsignados: [] });
+    setForm({ nombre: '', pin: '', email: '', jefesAsignados: [] });
     setShowModal(true);
   };
 
-  const openEdit = async (o: Operario) => {
+  const openEdit = async (o: Usuario) => {
     const { data } = await supabase.from('jefe_operario').select('jefe_id').eq('operario_nombre', o.nombre);
     setEditing(o);
-    setForm({ nombre: o.nombre, email: o.email || '', activo: o.activo, pin: '', jefesAsignados: (data || []).map(r => r.jefe_id) });
+    setForm({ nombre: o.nombre, pin: '', email: (o as any).email || '', jefesAsignados: (data || []).map(r => r.jefe_id) });
     setShowModal(true);
   };
 
@@ -491,11 +491,11 @@ function OperariosPanel() {
     }));
   };
 
-  const del = async (o: Operario) => {
-    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará de todas las asignaciones y su acceso al sistema.\nEsta acción no se puede deshacer.`)) return;
+  const del = async (o: Usuario) => {
+    if (!confirm(`¿Eliminar el operario "${o.nombre}"?\nSe eliminará su acceso y todas las asignaciones.\nEsta acción no se puede deshacer.`)) return;
     await supabase.from('jefe_operario').delete().eq('operario_nombre', o.nombre);
-    await supabase.from('usuarios').delete().eq('nombre', o.nombre).eq('rol', 'operario');
-    await supabase.from('operarios').delete().eq('id', o.id);
+    await supabase.from('usuarios').delete().eq('id', o.id);
+    await supabase.from('operarios').delete().eq('nombre', o.nombre);
     load();
   };
 
@@ -503,22 +503,24 @@ function OperariosPanel() {
     const nombre = form.nombre.trim();
     if (!nombre) return;
     if (editing) {
-      await supabase.from('operarios').update({ nombre, email: form.email, activo: form.activo }).eq('id', editing.id);
+      const updates: Record<string, string> = { nombre, email: form.email };
+      if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
+      await supabase.from('usuarios').update(updates).eq('id', editing.id);
       if (nombre !== editing.nombre) {
-        await supabase.from('usuarios').update({ nombre }).eq('nombre', editing.nombre).eq('rol', 'operario');
+        await supabase.from('operarios').update({ nombre, email: form.email }).eq('nombre', editing.nombre);
         await supabase.from('jefe_operario').update({ operario_nombre: nombre }).eq('operario_nombre', editing.nombre);
-      }
-      if (form.pin.length === 4) {
-        const hashed = await hashPin(form.pin);
-        await supabase.from('usuarios').update({ pin: hashed }).eq('nombre', nombre).eq('rol', 'operario');
+      } else {
+        await supabase.from('operarios').update({ email: form.email }).eq('nombre', nombre);
       }
     } else {
       if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
       const hashed = await hashPin(form.pin);
-      await supabase.from('operarios').insert({ nombre, email: form.email, activo: form.activo });
-      // Delete any existing usuario record to avoid duplicates, then insert fresh
-      await supabase.from('usuarios').delete().eq('nombre', nombre).eq('rol', 'operario');
-      await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario' });
+      // PRIMARY: create login user
+      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email });
+      if (error) { alert(`Error al guardar: ${error.message}`); return; }
+      // SECONDARY: sync operarios table for KPI system
+      await supabase.from('operarios').delete().eq('nombre', nombre);
+      await supabase.from('operarios').insert({ nombre, email: form.email, activo: true });
     }
     // Sync jefe assignments
     await supabase.from('jefe_operario').delete().eq('operario_nombre', nombre);
@@ -546,7 +548,6 @@ function OperariosPanel() {
             <tr>
               <th className="px-4 py-2 text-left">Nombre</th>
               <th className="px-4 py-2 text-left">Email</th>
-              <th className="px-4 py-2 text-center">Activo</th>
               <th className="px-4 py-2 text-center">Acciones</th>
             </tr>
           </thead>
@@ -554,12 +555,7 @@ function OperariosPanel() {
             {operarios.map(o => (
               <tr key={o.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 font-medium text-slate-800">{o.nombre}</td>
-                <td className="px-4 py-2 text-slate-600">{o.email || '—'}</td>
-                <td className="px-4 py-2 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${o.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {o.activo ? 'Activo' : 'Inactivo'}
-                  </span>
-                </td>
+                <td className="px-4 py-2 text-slate-600">{(o as any).email || '—'}</td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => openEdit(o)} className="p-1 rounded hover:bg-slate-100" title="Editar">
@@ -573,7 +569,7 @@ function OperariosPanel() {
               </tr>
             ))}
             {operarios.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">Sin operarios</td></tr>
+              <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin operarios</td></tr>
             )}
           </tbody>
         </table>
@@ -606,7 +602,7 @@ function OperariosPanel() {
                 placeholder="••••"
               />
               {!editing && (
-                <p className="text-xs text-slate-400 mt-1">El operario usará este PIN para acceder al sistema en modo lectura.</p>
+                <p className="text-xs text-slate-400 mt-1">El operario usará este PIN para acceder al sistema.</p>
               )}
             </div>
             <div>
@@ -625,10 +621,6 @@ function OperariosPanel() {
                 ))}
                 {jefes.length === 0 && <p className="text-slate-400 text-sm col-span-2">No hay jefes disponibles</p>}
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="activo" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
-              <label htmlFor="activo" className="text-sm text-slate-700">Activo</label>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm hover:bg-slate-300">Cancelar</button>
@@ -652,7 +644,7 @@ function JefesPanel() {
   const load = async () => {
     const [{ data: j }, { data: o }] = await Promise.all([
       supabase.from('usuarios').select('*').eq('rol', 'jefe').order('nombre'),
-      supabase.from('operarios').select('nombre').eq('activo', true).order('nombre'),
+      supabase.from('usuarios').select('nombre').eq('rol', 'operario').order('nombre'),
     ]);
     setJefes(j || []);
     setOperarios((o || []).map(r => r.nombre));
