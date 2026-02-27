@@ -25,7 +25,7 @@ function euro(n: number) {
   return `${n < 0 ? '−' : ''}${fmt} €`;
 }
 
-export function RagBadge({ rag }: { rag: 'green' | 'amber' | 'red' }) {
+function RagBadge({ rag }: { rag: 'green' | 'amber' | 'red' }) {
   const map = {
     green: { bg: 'bg-green-100 text-green-800 border-green-200', label: 'VERDE',    dot: 'bg-green-500' },
     amber: { bg: 'bg-amber-100 text-amber-800 border-amber-200', label: 'AMARILLO', dot: 'bg-amber-500' },
@@ -42,7 +42,7 @@ export function RagBadge({ rag }: { rag: 'green' | 'amber' | 'red' }) {
 
 // ─── Semáforo KPI Panel ───────────────────────────────────────────────────────
 
-export function SemaforoKPIPanel({ operarios }: { operarios: string[] }) {
+function SemaforoKPIPanel({ operarios }: { operarios: string[] }) {
   const now = new Date();
   const [año, setAño] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
