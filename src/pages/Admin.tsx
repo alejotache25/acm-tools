@@ -292,6 +292,7 @@ function PermisosPanel() {
   const [configId, setConfigId] = useState<string | null>(null);
   const [permisos, setPermisos] = useState<PermisosConfig>(buildDefaults());
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [loading, setLoading] = useState(true);
   const [needsMigration, setNeedsMigration] = useState(false);
 
@@ -321,8 +322,13 @@ function PermisosPanel() {
 
   const save = async () => {
     if (!configId) return;
+    setSaveError('');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('config') as any).update({ permisos_roles: permisos }).eq('id', configId);
+    const { error } = await (supabase.from('config') as any).update({ permisos_roles: permisos }).eq('id', configId);
+    if (error) {
+      setSaveError(error.message || 'Error al guardar. Comprueba los permisos de la base de datos.');
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -345,6 +351,12 @@ function PermisosPanel() {
           {saved ? '¡Guardado!' : 'Guardar cambios'}
         </button>
       </div>
+
+      {saveError && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          {saveError}
+        </div>
+      )}
 
       {needsMigration && (
         <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
@@ -808,6 +820,7 @@ function ConfigPanel() {
   const [form, setForm] = useState({ webhook_url: '', nombre_empresa: '', logo_url: '' });
   const [configId, setConfigId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     supabase.from('config').select('*').single().then(({ data }) => {
@@ -816,11 +829,18 @@ function ConfigPanel() {
   }, []);
 
   const save = async () => {
+    setSaveError('');
+    let error;
     if (configId) {
-      await supabase.from('config').update(form).eq('id', configId);
+      ({ error } = await supabase.from('config').update(form).eq('id', configId));
     } else {
-      const { data } = await supabase.from('config').insert(form).select('id').single();
+      const { data, error: insertError } = await supabase.from('config').insert(form).select('id').single();
+      error = insertError;
       if (data) setConfigId(data.id);
+    }
+    if (error) {
+      setSaveError(error.message || 'Error al guardar la configuración.');
+      return;
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -850,6 +870,9 @@ function ConfigPanel() {
         <button onClick={save} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium">
           {saved ? '¡Guardado!' : 'Guardar'}
         </button>
+        {saveError && (
+          <p className="mt-2 text-sm text-red-600">{saveError}</p>
+        )}
       </div>
     </div>
   );
