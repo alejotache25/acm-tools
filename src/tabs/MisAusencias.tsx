@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { PlusIcon, XMarkIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabase';
 import { sendSolicitudEmail } from '../lib/email';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ function EstadoBadge({ estado }: { estado: EstadoAusencia }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function MisAusencias({ operario }: { operario: string }) {
+  const { user } = useAuth();
   const [ausencias, setAusencias] = useState<Ausencia[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showForm, setShowForm]   = useState(false);
@@ -99,10 +101,21 @@ export default function MisAusencias({ operario }: { operario: string }) {
 
     setSubmitting(true);
     try {
+      // Fetch own email so jefe can reply later (read own row — no RLS issue)
+      let operarioEmail: string | null = null;
+      if (user?.id) {
+        const { data: meUser } = await supabase
+          .from('usuarios')
+          .select('email')
+          .eq('id', user.id)
+          .maybeSingle();
+        operarioEmail = meUser?.email ?? null;
+      }
+
       // Insert request
       const { data: inserted, error: insErr } = await supabase
         .from('ausencias')
-        .insert({ operario_nombre: operario, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, dias })
+        .insert({ operario_nombre: operario, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, dias, operario_email: operarioEmail })
         .select()
         .single();
 

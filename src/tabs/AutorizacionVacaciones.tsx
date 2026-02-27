@@ -19,6 +19,7 @@ interface Ausencia {
   estado:          EstadoAusencia;
   comentario_jefe: string | null;
   jefe_nombre:     string | null;
+  operario_email:  string | null;
   created_at:      string;
 }
 
@@ -58,7 +59,7 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
   const [processing, setProcessing]   = useState<string | null>(null);
 
   // Modal state
-  const [modal, setModal]             = useState<{ id: string; accion: 'aprobada' | 'rechazada'; nombre: string; tipo: TipoAusencia; fecha_inicio: string; fecha_fin: string; dias: number } | null>(null);
+  const [modal, setModal]             = useState<{ id: string; accion: 'aprobada' | 'rechazada'; nombre: string; tipo: TipoAusencia; fecha_inicio: string; fecha_fin: string; dias: number; operario_email: string | null } | null>(null);
   const [comentario, setComentario]   = useState('');
 
   const load = async () => {
@@ -77,7 +78,7 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
 
   const openModal = (a: Ausencia, accion: 'aprobada' | 'rechazada') => {
     setComentario('');
-    setModal({ id: a.id, accion, nombre: a.operario_nombre, tipo: a.tipo, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin, dias: a.dias });
+    setModal({ id: a.id, accion, nombre: a.operario_nombre, tipo: a.tipo, fecha_inicio: a.fecha_inicio, fecha_fin: a.fecha_fin, dias: a.dias, operario_email: a.operario_email });
   };
 
   const resolver = async () => {
@@ -96,17 +97,11 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
 
       if (error) throw error;
 
-      // Email to operario — look up email from operarios table (avoids cross-user RLS on usuarios)
-      try {
-        const { data: opRow } = await supabase
-          .from('operarios')
-          .select('email')
-          .eq('nombre', modal.nombre)
-          .maybeSingle();
-
-        if (opRow?.email) {
+      // Email to operario — email stored in ausencias.operario_email when request was created
+      if (modal.operario_email) {
+        try {
           await sendResolucionEmail({
-            to_email:    opRow.email,
+            to_email:    modal.operario_email,
             to_name:     modal.nombre,
             tipo:        tipoLabel(modal.tipo),
             fecha_inicio: fmtFecha(modal.fecha_inicio),
@@ -116,8 +111,8 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
             comentario:   comentario.trim() || '—',
             jefe_nombre:  user?.nombre ?? '',
           });
-        }
-      } catch (_) { /* email errors are non-blocking */ }
+        } catch (_) { /* email errors are non-blocking */ }
+      }
 
       setAusencias(prev => prev.map(a =>
         a.id === modal.id
