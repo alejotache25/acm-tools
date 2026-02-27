@@ -297,7 +297,7 @@ function PermisosPanel() {
   const [needsMigration, setNeedsMigration] = useState(false);
 
   useEffect(() => {
-    supabase.from('config').select('id, permisos_roles').single().then(({ data, error }) => {
+    supabase.from('config').select('id, permisos_roles').limit(1).maybeSingle().then(({ data, error }) => {
       if (error) { setLoading(false); return; }
       if (data) {
         setConfigId(data.id);
@@ -834,7 +834,7 @@ function ConfigPanel() {
   const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
-    supabase.from('config').select('*').single().then(({ data }) => {
+    supabase.from('config').select('*').limit(1).maybeSingle().then(({ data }) => {
       if (data) { setConfigId(data.id); setForm({ webhook_url: data.webhook_url || '', nombre_empresa: data.nombre_empresa || '', logo_url: data.logo_url || '' }); }
     });
   }, []);
