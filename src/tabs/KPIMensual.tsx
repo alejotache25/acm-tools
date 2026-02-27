@@ -119,7 +119,7 @@ const numCls    = 'bg-blue-50 border border-blue-200 rounded px-1 py-0.5 text-xs
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function KPIMensual({ operario }: { operario: string }) {
+export default function KPIMensual({ operario, readOnly = false }: { operario: string; readOnly?: boolean }) {
   const { user } = useAuth();
   const isOperario = user?.rol === 'operario';
   const now = new Date();
@@ -401,7 +401,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
           <tbody>
             {rows.map(r => {
               const isCurrent = r.mes === curMes;
-              const isLocked = isOperario && !isCurrent;
+              const isLocked = readOnly || (isOperario && !isCurrent);
               const locked = isLocked || r.isEmpty;
               const rowBg = r.isEmpty ? 'bg-slate-100 opacity-60' : isCurrent ? 'bg-blue-50' : 'bg-white hover:bg-slate-50/80';
               const dash = <span className="text-slate-300 text-xs">—</span>;
@@ -612,7 +612,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
                   {/* ── LIMPIAR / RESTAURAR ── */}
                   <td className="px-1 py-1 border border-slate-200 text-center">
-                    {r.isEmpty ? (
+                    {!readOnly && (r.isEmpty ? (
                       <button
                         onClick={() => restoreMonth(r.mes)}
                         className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors leading-tight"
@@ -624,7 +624,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
                         className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-500 transition-colors leading-tight"
                         title="Limpiar mes (poner a 0)"
                       >×</button>
-                    )}
+                    ))}
                   </td>
                 </tr>
               );
@@ -690,7 +690,8 @@ export default function KPIMensual({ operario }: { operario: string }) {
               type="number" step="1" min="0"
               value={kpiRef}
               onChange={e => updateKpiRef(parseFloat(e.target.value) || 0)}
-              className="w-20 bg-slate-800 border border-slate-500 rounded px-2 py-0.5 text-white text-center outline-none focus:ring-1 focus:ring-blue-400 text-xs"
+              disabled={readOnly}
+              className="w-20 bg-slate-800 border border-slate-500 rounded px-2 py-0.5 text-white text-center outline-none focus:ring-1 focus:ring-blue-400 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
             />
             <span className="text-slate-400">€</span>
           </div>
@@ -712,7 +713,7 @@ export default function KPIMensual({ operario }: { operario: string }) {
             <tbody>
               {rows.map((r, i) => {
                 const isCurrent = r.mes === curMes;
-                const isLocked2 = isOperario && !isCurrent;
+                const isLocked2 = readOnly || (isOperario && !isCurrent);
                 const cobrar = Math.max(r.total - kpiRef, 0);
                 return (
                   <tr key={r.mes} className={`${isCurrent ? 'bg-blue-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-slate-100/60 transition-colors`}>
