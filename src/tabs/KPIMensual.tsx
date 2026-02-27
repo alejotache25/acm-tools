@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { rowToMonthData } from './KPIDashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,37 +51,7 @@ const DEFAULT_MONTH: MonthData = {
   h_ext:        0,
 };
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
-
-function storageKey(operario: string, año: number) {
-  return `kpi_mensual:${operario}:${año}`;
-}
-
-function loadYear(operario: string, año: number): YearData {
-  try {
-    const raw = localStorage.getItem(storageKey(operario, año));
-    return raw ? (JSON.parse(raw) as YearData) : {};
-  } catch { return {}; }
-}
-
-function saveYear(operario: string, año: number, data: YearData) {
-  localStorage.setItem(storageKey(operario, año), JSON.stringify(data));
-}
-
-function kpiRefKey(operario: string, año: number) {
-  return `kpi_ref:${operario}:${año}`;
-}
-
-function loadKpiRef(operario: string, año: number): number {
-  try {
-    const raw = localStorage.getItem(kpiRefKey(operario, año));
-    return raw !== null ? parseFloat(raw) : 0;
-  } catch { return 0; }
-}
-
-function saveKpiRef(operario: string, año: number, val: number) {
-  localStorage.setItem(kpiRefKey(operario, año), String(val));
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getMonthData(data: YearData, mes: number): MonthData {
   return data[mes] ?? { ...DEFAULT_MONTH };
@@ -151,51 +123,69 @@ export default function KPIMensual({ operario }: { operario: string }) {
   const { user } = useAuth();
   const isOperario = user?.rol === 'operario';
   const now = new Date();
-  const [año, setAño]     = useState(now.getFullYear());
-  const [data, setData]   = useState<YearData>(() => loadYear(operario, año));
-  const [kpiRef, setKpiRef] = useState(() => loadKpiRef(operario, now.getFullYear()));
+  const [año, setAño]       = useState(now.getFullYear());
+  const [data, setData]     = useState<YearData>({});
+  const [kpiRef, setKpiRef] = useState(0);
+  const [loading, setLoading] = useState(true);
 
+  // Load from Supabase
   useEffect(() => {
-    setData(loadYear(operario, año));
-    setKpiRef(loadKpiRef(operario, año));
+    setLoading(true);
+    Promise.all([
+      supabase.from('kpi_mensual').select('*').eq('operario', operario).eq('año', año),
+      supabase.from('kpi_ref').select('valor').eq('operario', operario).eq('año', año).maybeSingle(),
+    ]).then(([{ data: rows }, { data: refRow }]) => {
+      const yearData: YearData = {};
+      for (const row of rows || []) {
+        yearData[row.mes] = rowToMonthData(row);
+      }
+      setData(yearData);
+      setKpiRef(refRow ? Number(refRow.valor) : 0);
+      setLoading(false);
+    });
+  }, [operario, año]);
+
+  const upsertMonth = useCallback(async (mes: number, md: MonthData) => {
+    await supabase.from('kpi_mensual').upsert({
+      operario, año, mes,
+      prod_pct:     md.prod_pct,
+      ctrl_doc_pts: md.ctrl_doc_pts,
+      ctrl_vis_pct: md.ctrl_vis_pct,
+      retorno_pct:  md.retorno_pct,
+      herr_pct:     md.herr_pct,
+      vehic_pct:    md.vehic_pct,
+      aseo_pct:     md.aseo_pct,
+      h_obj:        md.h_obj,
+      h_inv:        md.h_inv,
+      objetivo:     md.objetivo,
+      dietas:       md.dietas,
+      h_ext:        md.h_ext,
+      is_empty:     !!md.empty,
+      updated_at:   new Date().toISOString(),
+    }, { onConflict: 'operario,año,mes' });
   }, [operario, año]);
 
   const updateKpiRef = (val: number) => {
     setKpiRef(val);
-    saveKpiRef(operario, año, val);
+    supabase.from('kpi_ref').upsert({ operario, año, valor: val }, { onConflict: 'operario,año' });
   };
 
   const updateField = (mes: number, field: keyof MonthData, value: number) => {
-    setData(prev => {
-      const updated: YearData = {
-        ...prev,
-        [mes]: { ...getMonthData(prev, mes), [field]: value },
-      };
-      saveYear(operario, año, updated);
-      return updated;
-    });
+    const newMd = { ...getMonthData(data, mes), [field]: value };
+    setData(prev => ({ ...prev, [mes]: newMd }));
+    upsertMonth(mes, newMd);
   };
 
   const clearMonth = (mes: number) => {
-    setData(prev => {
-      const updated: YearData = {
-        ...prev,
-        [mes]: { ...getMonthData(prev, mes), empty: true },
-      };
-      saveYear(operario, año, updated);
-      return updated;
-    });
+    const newMd = { ...getMonthData(data, mes), empty: true };
+    setData(prev => ({ ...prev, [mes]: newMd }));
+    upsertMonth(mes, newMd);
   };
 
   const restoreMonth = (mes: number) => {
-    setData(prev => {
-      const updated: YearData = {
-        ...prev,
-        [mes]: { ...getMonthData(prev, mes), empty: false },
-      };
-      saveYear(operario, año, updated);
-      return updated;
-    });
+    const newMd = { ...getMonthData(data, mes), empty: false };
+    setData(prev => ({ ...prev, [mes]: newMd }));
+    upsertMonth(mes, newMd);
   };
 
   // Compute all 12 months with running accumulators (mirrors spreadsheet formulas)
@@ -304,6 +294,8 @@ export default function KPIMensual({ operario }: { operario: string }) {
 
   const td  = 'px-2 py-1.5 text-center border border-slate-200 text-xs whitespace-nowrap';
   const tdi = 'px-1 py-1 border border-slate-200';
+
+  if (loading) return <div className="py-10 text-center text-slate-400 text-sm">Cargando datos KPI...</div>;
 
   return (
     <div className="space-y-4">

@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import TabNav from '../components/TabNav';
 import DashboardPanel from '../tabs/Dashboard';
-import KPIDashboard, { buildSummary, MESES, MESES_FULL } from '../tabs/KPIDashboard';
+import KPIDashboard, { buildSummary, rowToMonthData, MESES, MESES_FULL } from '../tabs/KPIDashboard';
+import type { YearData } from '../tabs/KPIDashboard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -46,9 +47,31 @@ function SemaforoKPIPanel({ operarios }: { operarios: string[] }) {
   const [año, setAño] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
 
+  // KPI data from Supabase
+  const [yearDataMap, setYearDataMap] = useState<Record<string, YearData>>({});
+  const [kpiRefsMap, setKpiRefsMap]   = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (operarios.length === 0) { setYearDataMap({}); setKpiRefsMap({}); return; }
+    Promise.all([
+      supabase.from('kpi_mensual').select('*').eq('año', año).in('operario', operarios),
+      supabase.from('kpi_ref').select('operario, valor').eq('año', año).in('operario', operarios),
+    ]).then(([{ data: rows }, { data: refs }]) => {
+      const newMap: Record<string, YearData> = {};
+      for (const row of rows || []) {
+        if (!newMap[row.operario]) newMap[row.operario] = {};
+        newMap[row.operario][row.mes] = rowToMonthData(row);
+      }
+      setYearDataMap(newMap);
+      const newRefs: Record<string, number> = {};
+      for (const r of refs || []) newRefs[r.operario] = Number(r.valor);
+      setKpiRefsMap(newRefs);
+    });
+  }, [operarios, año]);
+
   const summaries = useMemo(
-    () => operarios.map(n => buildSummary(n, año)),
-    [operarios, año],
+    () => operarios.map(n => buildSummary(n, yearDataMap[n] || {}, kpiRefsMap[n] || 0)),
+    [operarios, yearDataMap, kpiRefsMap],
   );
 
   // ── 1. RAG current month table ──
@@ -72,18 +95,15 @@ function SemaforoKPIPanel({ operarios }: { operarios: string[] }) {
 
   // ── 3. Alertas meses sin rellenar ──
   const alertas = useMemo(() => {
-    const nowDate  = new Date();
-    const maxMes   = año === nowDate.getFullYear() ? nowDate.getMonth() + 1 : 12;
+    const nowDate = new Date();
+    const maxMes  = año === nowDate.getFullYear() ? nowDate.getMonth() + 1 : 12;
     return operarios.map(nombre => {
-      try {
-        const raw      = localStorage.getItem(`kpi_mensual:${nombre}:${año}`);
-        const yearData = raw ? (JSON.parse(raw) as Record<number, unknown>) : {};
-        const faltantes = Array.from({ length: maxMes }, (_, i) => i + 1)
-          .filter(m => !yearData[m]);
-        return { nombre, faltantes };
-      } catch { return { nombre, faltantes: [] }; }
+      const yearData = yearDataMap[nombre] || {};
+      const faltantes = Array.from({ length: maxMes }, (_, i) => i + 1)
+        .filter(m => !yearData[m]);
+      return { nombre, faltantes };
     }).filter(a => a.faltantes.length > 0);
-  }, [operarios, año]);
+  }, [operarios, yearDataMap, año]);
 
   // ── 4. Comparativa productividad ──
   const prodRows = useMemo(() => summaries.map(s => ({

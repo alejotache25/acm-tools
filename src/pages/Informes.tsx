@@ -13,27 +13,21 @@ const MESES = [
 const currentYear = new Date().getFullYear();
 const AÑOS = [currentYear - 1, currentYear, currentYear + 1];
 
-// ─── localStorage helpers (mirror of KPIMensual) ──────────────────────────────
+// ─── KPI data helpers (Supabase) ──────────────────────────────────────────────
 
-type MonthData = {
-  prod_pct: number; ctrl_doc_pts: number; ctrl_vis_pct: number; retorno_pct: number;
-  herr_pct: number; vehic_pct: number; aseo_pct: number; h_obj: number; h_inv: number;
-  objetivo: number; dietas: number; h_ext: number;
-};
-type YearData = Record<number, MonthData>;
+import { rowToMonthData } from '../tabs/KPIDashboard';
+import type { MonthData, YearData } from '../tabs/KPIDashboard';
 
-function loadKpiYear(operario: string, año: number): YearData {
-  try {
-    const raw = localStorage.getItem(`kpi_mensual:${operario}:${año}`);
-    return raw ? (JSON.parse(raw) as YearData) : {};
-  } catch { return {}; }
+async function loadKpiYear(operario: string, año: number): Promise<YearData> {
+  const { data } = await supabase.from('kpi_mensual').select('*').eq('operario', operario).eq('año', año);
+  const yearData: YearData = {};
+  for (const row of data || []) yearData[row.mes] = rowToMonthData(row);
+  return yearData;
 }
 
-function loadKpiRef(operario: string, año: number): number {
-  try {
-    const raw = localStorage.getItem(`kpi_ref:${operario}:${año}`);
-    return raw !== null ? parseFloat(raw) : 0;
-  } catch { return 0; }
+async function loadKpiRef(operario: string, año: number): Promise<number> {
+  const { data } = await supabase.from('kpi_ref').select('valor').eq('operario', operario).eq('año', año).maybeSingle();
+  return data ? Number(data.valor) : 0;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -104,17 +98,19 @@ export default function Informes() {
   const fetchReportParams = async (): Promise<ReportParams> => {
     const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
     const endDate   = new Date(año, mes, 0).toISOString().split('T')[0];
-    const [incRes, ccRes, visRes, limpRes, hiRes] = await Promise.all([
+    const [incRes, ccRes, visRes, limpRes, hiRes, kpiData, kpiRef] = await Promise.all([
       supabase.from('incidencias').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
       supabase.from('control_calidad').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
       supabase.from('visitas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
       supabase.from('limpieza').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
       supabase.from('horas_improductivas').select('*').eq('operario', operario).gte('fecha', startDate).lte('fecha', endDate).order('fecha'),
+      loadKpiYear(operario, año),
+      loadKpiRef(operario, año),
     ]);
     return {
       operario, mes, año,
-      kpiData:        loadKpiYear(operario, año),
-      kpiRef:         loadKpiRef(operario, año),
+      kpiData,
+      kpiRef,
       incidencias:    (incRes.data  || []) as Incidencia[],
       controlCalidad: (ccRes.data   || []) as ControlCalidad[],
       visitas:        (visRes.data  || []) as Visita[],

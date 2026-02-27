@@ -521,6 +521,15 @@ function OperariosPanel() {
       // SECONDARY: sync operarios table for KPI system
       await supabase.from('operarios').delete().eq('nombre', nombre);
       await supabase.from('operarios').insert({ nombre, email: form.email, activo: true });
+      // INITIALIZE: create 12 KPI month rows for current year with defaults
+      const kpiAño = new Date().getFullYear();
+      const kpiRows = Array.from({ length: 12 }, (_, i) => ({
+        operario: nombre, año: kpiAño, mes: i + 1,
+        prod_pct: 100, ctrl_doc_pts: 10, ctrl_vis_pct: 100, retorno_pct: 0,
+        herr_pct: 100, vehic_pct: 100, aseo_pct: 100,
+        h_obj: 1.5, h_inv: 0, objetivo: 250, dietas: 0, h_ext: 0, is_empty: false,
+      }));
+      await supabase.from('kpi_mensual').upsert(kpiRows, { onConflict: 'operario,año,mes' });
     }
     // Sync jefe assignments
     await supabase.from('jefe_operario').delete().eq('operario_nombre', nombre);

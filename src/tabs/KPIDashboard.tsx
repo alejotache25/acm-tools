@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 // ─── Types (mirrored from KPIMensual) ─────────────────────────────────────────
 
 interface MonthData {
+  empty?:       boolean;
   prod_pct:     number;
   ctrl_doc_pts: number;
   ctrl_vis_pct: number;
@@ -33,20 +34,25 @@ const DEFAULT_MONTH: MonthData = {
   h_obj: 1.5, h_inv: 0, objetivo: 250, dietas: 0, h_ext: 0,
 };
 
-// ─── Storage helpers ──────────────────────────────────────────────────────────
+// ─── Supabase row → MonthData ─────────────────────────────────────────────────
 
-function loadYear(operario: string, año: number): YearData {
-  try {
-    const raw = localStorage.getItem(`kpi_mensual:${operario}:${año}`);
-    return raw ? (JSON.parse(raw) as YearData) : {};
-  } catch { return {}; }
-}
-
-function loadKpiRef(operario: string, año: number): number {
-  try {
-    const raw = localStorage.getItem(`kpi_ref:${operario}:${año}`);
-    return raw !== null ? parseFloat(raw) : 0;
-  } catch { return 0; }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function rowToMonthData(row: any): MonthData {
+  return {
+    prod_pct:     Number(row.prod_pct),
+    ctrl_doc_pts: Number(row.ctrl_doc_pts),
+    ctrl_vis_pct: Number(row.ctrl_vis_pct),
+    retorno_pct:  Number(row.retorno_pct),
+    herr_pct:     Number(row.herr_pct),
+    vehic_pct:    Number(row.vehic_pct),
+    aseo_pct:     Number(row.aseo_pct),
+    h_obj:        Number(row.h_obj),
+    h_inv:        Number(row.h_inv),
+    objetivo:     Number(row.objetivo),
+    dietas:       Number(row.dietas),
+    h_ext:        Number(row.h_ext),
+    empty:        Boolean(row.is_empty),
+  };
 }
 
 function getMonthData(data: YearData, mes: number): MonthData {
@@ -111,9 +117,7 @@ interface OperarioSummary {
   total_cobrar: number; total_objetivo: number; pct_objetivo: number | null;
 }
 
-function buildSummary(nombre: string, año: number): OperarioSummary {
-  const yearData = loadYear(nombre, año);
-  const kpiRef   = loadKpiRef(nombre, año);
+export function buildSummary(nombre: string, yearData: YearData, kpiRef: number): OperarioSummary {
 
   let acc_prod = 0, acc_ctrl_doc = 0, acc_ctrl_vis = 0, acc_ret = 0;
   let acc_herr = 0, acc_vehic = 0,   acc_aseo = 0,      acc_total = 0;
@@ -152,7 +156,7 @@ function buildSummary(nombre: string, año: number): OperarioSummary {
 }
 
 // ─── Named exports for reuse ──────────────────────────────────────────────────
-export { loadYear, loadKpiRef, buildSummary, calcMonth, MESES, MESES_FULL, PENALTY_RATE, DEFAULT_MONTH };
+export { calcMonth, MESES, MESES_FULL, PENALTY_RATE, DEFAULT_MONTH };
 export type { MonthData, YearData, MonthResult, OperarioSummary };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -187,6 +191,11 @@ export default function KPIDashboard({ operariosFilter }: { operariosFilter?: st
   const [loadingOp, setLoadingOp] = useState(true);
   const [expanded, setExpanded]   = useState<string | null>(null);
 
+  // KPI data from Supabase
+  const [yearDataMap, setYearDataMap] = useState<Record<string, YearData>>({});
+  const [kpiRefsMap, setKpiRefsMap]   = useState<Record<string, number>>({});
+  const [loadingData, setLoadingData] = useState(false);
+
   useEffect(() => {
     if (operariosFilter) {
       setOperarios(operariosFilter);
@@ -200,10 +209,31 @@ export default function KPIDashboard({ operariosFilter }: { operariosFilter?: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(operariosFilter)]);
 
-  // Build all summaries from localStorage
+  // Load KPI data from Supabase when operarios or año changes
+  useEffect(() => {
+    if (operarios.length === 0) { setYearDataMap({}); setKpiRefsMap({}); return; }
+    setLoadingData(true);
+    Promise.all([
+      supabase.from('kpi_mensual').select('*').eq('año', año).in('operario', operarios),
+      supabase.from('kpi_ref').select('operario, valor').eq('año', año).in('operario', operarios),
+    ]).then(([{ data: rows }, { data: refs }]) => {
+      const newMap: Record<string, YearData> = {};
+      for (const row of rows || []) {
+        if (!newMap[row.operario]) newMap[row.operario] = {};
+        newMap[row.operario][row.mes] = rowToMonthData(row);
+      }
+      setYearDataMap(newMap);
+      const newRefs: Record<string, number> = {};
+      for (const r of refs || []) newRefs[r.operario] = Number(r.valor);
+      setKpiRefsMap(newRefs);
+      setLoadingData(false);
+    });
+  }, [operarios, año]);
+
+  // Build all summaries from Supabase data
   const summaries = useMemo(
-    () => operarios.map(n => buildSummary(n, año)),
-    [operarios, año],
+    () => operarios.map(n => buildSummary(n, yearDataMap[n] || {}, kpiRefsMap[n] || 0)),
+    [operarios, yearDataMap, kpiRefsMap],
   );
 
   // For monthly view: compute each operario's single-month result
@@ -265,7 +295,8 @@ export default function KPIDashboard({ operariosFilter }: { operariosFilter?: st
         )}
 
         <span className="text-xs text-slate-400 italic ml-auto">
-          {operarios.length} operario{operarios.length !== 1 ? 's' : ''} · datos de localStorage
+          {operarios.length} operario{operarios.length !== 1 ? 's' : ''}
+          {loadingData && ' · cargando...'}
         </span>
       </div>
 
@@ -584,7 +615,7 @@ export default function KPIDashboard({ operariosFilter }: { operariosFilter?: st
       )}
 
       <p className="text-[11px] text-slate-400 italic px-1">
-        Los datos de KPI Mensual se almacenan en el navegador (localStorage). Esta vista lee el mismo dispositivo donde se introduce la información.
+        Los datos de KPI Mensual se guardan en la base de datos y son accesibles desde cualquier dispositivo.
       </p>
     </div>
   );
