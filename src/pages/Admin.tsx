@@ -600,7 +600,7 @@ function JefesPanel() {
   const [operarios, setOperarios] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
-  const [form, setForm] = useState({ nombre: '', pin: '', asignados: [] as string[] });
+  const [form, setForm] = useState({ nombre: '', pin: '', email: '', asignados: [] as string[] });
 
   const load = async () => {
     const [{ data: j }, { data: o }] = await Promise.all([
@@ -613,11 +613,11 @@ function JefesPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm({ nombre: '', pin: '', asignados: [] }); setShowModal(true); };
+  const openAdd = () => { setEditing(null); setForm({ nombre: '', pin: '', email: '', asignados: [] }); setShowModal(true); };
   const openEdit = async (j: Usuario) => {
     const { data } = await supabase.from('jefe_operario').select('operario_nombre').eq('jefe_id', j.id);
     setEditing(j);
-    setForm({ nombre: j.nombre, pin: '', asignados: (data || []).map(r => r.operario_nombre) });
+    setForm({ nombre: j.nombre, pin: '', email: (j as any).email || '', asignados: (data || []).map(r => r.operario_nombre) });
     setShowModal(true);
   };
 
@@ -635,7 +635,7 @@ function JefesPanel() {
     let jefeId = editing?.id;
 
     if (editing) {
-      const updates: Record<string, string> = { nombre: form.nombre };
+      const updates: Record<string, string> = { nombre: form.nombre, email: form.email };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
     } else {
@@ -643,7 +643,7 @@ function JefesPanel() {
       const hashed = await hashPin(form.pin);
       const { data } = await supabase
         .from('usuarios')
-        .insert({ nombre: form.nombre, pin: hashed, rol: 'jefe' })
+        .insert({ nombre: form.nombre, pin: hashed, rol: 'jefe', email: form.email })
         .select('id')
         .single();
       jefeId = data?.id;
@@ -675,6 +675,7 @@ function JefesPanel() {
           <thead className="bg-slate-600 text-slate-100 text-sm">
             <tr>
               <th className="px-4 py-2 text-left">Nombre</th>
+              <th className="px-4 py-2 text-left">Email</th>
               <th className="px-4 py-2 text-center">Acciones</th>
             </tr>
           </thead>
@@ -682,6 +683,7 @@ function JefesPanel() {
             {jefes.map(j => (
               <tr key={j.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 font-medium text-slate-800">{j.nombre}</td>
+                <td className="px-4 py-2 text-slate-600">{(j as any).email || '—'}</td>
                 <td className="px-4 py-2 text-center">
                   <button onClick={() => openEdit(j)} className="p-1 rounded hover:bg-slate-100">
                     <PencilIcon className="h-4 w-4 text-blue-600" />
@@ -690,7 +692,7 @@ function JefesPanel() {
               </tr>
             ))}
             {jefes.length === 0 && (
-              <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-400">Sin jefes</td></tr>
+              <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin jefes</td></tr>
             )}
           </tbody>
         </table>
@@ -702,6 +704,11 @@ function JefesPanel() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
               <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
