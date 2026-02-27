@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CheckIcon, XMarkIcon, CalendarDaysIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabase';
-import { sendResolucionEmail } from '../lib/email';
 import { useAuth } from '../context/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,34 +95,7 @@ export default function AutorizacionVacaciones({ operarios }: { operarios: strin
         .eq('id', modal.id);
 
       if (error) throw error;
-
-      // Email to operario
-      // 1st choice: email stored on the ausencia when operario submitted it
-      // 2nd choice: fallback lookup in operarios table (for old records or missing email)
-      try {
-        let toEmail = modal.operario_email?.trim() || null;
-        if (!toEmail) {
-          const { data: opRow } = await supabase
-            .from('operarios')
-            .select('email')
-            .eq('nombre', modal.nombre)
-            .maybeSingle();
-          toEmail = opRow?.email?.trim() || null;
-        }
-        if (toEmail) {
-          await sendResolucionEmail({
-            to_email:    toEmail,
-            to_name:     modal.nombre,
-            tipo:        tipoLabel(modal.tipo),
-            fecha_inicio: fmtFecha(modal.fecha_inicio),
-            fecha_fin:    fmtFecha(modal.fecha_fin),
-            dias:         modal.dias,
-            estado:       modal.accion === 'aprobada' ? 'Aprobada ✓' : 'Rechazada ✗',
-            comentario:   comentario.trim() || '—',
-            jefe_nombre:  user?.nombre ?? '',
-          });
-        }
-      } catch (_) { /* email errors are non-blocking */ }
+      // Email al operario es enviado automáticamente por el webhook notify-ausencia-resolved
 
       setAusencias(prev => prev.map(a =>
         a.id === modal.id
