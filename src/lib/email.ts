@@ -1,11 +1,15 @@
-import emailjs from '@emailjs/browser';
+import { supabase } from './supabase';
 
-const SERVICE_ID          = import.meta.env.VITE_EMAILJS_SERVICE_ID        as string | undefined;
-const PUBLIC_KEY          = import.meta.env.VITE_EMAILJS_PUBLIC_KEY         as string | undefined;
-const TEMPLATE_SOLICITUD  = import.meta.env.VITE_EMAILJS_TEMPLATE_SOLICITUD as string | undefined;
-const TEMPLATE_RESOLUCION = import.meta.env.VITE_EMAILJS_TEMPLATE_RESOLUCION as string | undefined;
+// Sends email via the send-ausencia-email Supabase Edge Function (uses Resend).
+// Gracefully skips if the function is not deployed yet.
 
-const configured = !!(SERVICE_ID && PUBLIC_KEY && TEMPLATE_SOLICITUD && TEMPLATE_RESOLUCION);
+async function invoke(payload: Record<string, unknown>) {
+  try {
+    await supabase.functions.invoke('send-ausencia-email', { body: payload });
+  } catch (e) {
+    console.warn('send-ausencia-email edge function error:', e);
+  }
+}
 
 // Sent to jefe when operario submits a request
 export async function sendSolicitudEmail(params: {
@@ -17,30 +21,20 @@ export async function sendSolicitudEmail(params: {
   fecha_fin:       string;
   dias:            number;
 }) {
-  if (!configured) return;
-  try {
-    await emailjs.send(SERVICE_ID!, TEMPLATE_SOLICITUD!, params, PUBLIC_KEY!);
-  } catch (e) {
-    console.warn('EmailJS solicitud error:', e);
-  }
+  await invoke({ type: 'solicitud', ...params });
 }
 
 // Sent to operario when jefe approves or rejects
 export async function sendResolucionEmail(params: {
-  to_email:        string;
-  to_name:         string;
-  tipo:            string;
-  fecha_inicio:    string;
-  fecha_fin:       string;
-  dias:            number;
-  estado:          string;
-  comentario:      string;
-  jefe_nombre:     string;
+  to_email:    string;
+  to_name:     string;
+  tipo:        string;
+  fecha_inicio: string;
+  fecha_fin:    string;
+  dias:        number;
+  estado:      string;
+  comentario:  string;
+  jefe_nombre: string;
 }) {
-  if (!configured) return;
-  try {
-    await emailjs.send(SERVICE_ID!, TEMPLATE_RESOLUCION!, params, PUBLIC_KEY!);
-  } catch (e) {
-    console.warn('EmailJS resolución error:', e);
-  }
+  await invoke({ type: 'resolucion', ...params });
 }
