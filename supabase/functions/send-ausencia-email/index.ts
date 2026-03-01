@@ -10,11 +10,11 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const resendKey = Deno.env.get('RESEND_API_KEY');
-  const fromEmail = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev';
+  const brevoKey  = Deno.env.get('BREVO_API_KEY');
+  const fromEmail = Deno.env.get('FROM_EMAIL') ?? 'serviciosautomatizacion0210@gmail.com';
 
-  if (!resendKey) {
-    return new Response(JSON.stringify({ error: 'RESEND_API_KEY not set' }), { status: 500 });
+  if (!brevoKey) {
+    return new Response(JSON.stringify({ error: 'BREVO_API_KEY not set' }), { status: 500 });
   }
 
   const body = await req.json();
@@ -120,23 +120,23 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'Unknown type' }), { status: 400 });
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'Authorization':  `Bearer ${resendKey}`,
-      'Content-Type':   'application/json',
+      'api-key':      brevoKey,
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: `ACM Tools <${fromEmail}>`,
-      to:   [to_email],
+      sender:      { name: 'ACM Tools', email: fromEmail },
+      to:          [{ email: to_email, name: to_name }],
       subject,
-      html,
+      htmlContent: html,
     }),
   });
 
   const data = await res.json();
   return new Response(JSON.stringify(data), {
-    status:  res.status,
+    status:  res.ok ? 200 : res.status,
     headers: {
       'Content-Type':                 'application/json',
       'Access-Control-Allow-Origin':  '*',
