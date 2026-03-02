@@ -792,7 +792,7 @@ export default function KPIMensual({ operario, readOnly = false }: { operario: s
                 <td className={`px-3 py-2 text-right border border-slate-500 ${resumen.totalp_cobrar > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
                   {resumen.totalp_cobrar > 0 ? euro(resumen.totalp_cobrar) : '—'}
                 </td>
-                <td className="px-3 py-2 text-right border border-slate-500">{euro(resumen.totalp_objetivo)}</td>
+                <td className="px-3 py-2 text-right border border-slate-500">{euro(resumen.total_objetivo - 900)}</td>
                 <td className="px-3 py-2 text-right border border-slate-500 text-slate-400">—</td>
                 <td className="px-3 py-2 text-right border border-slate-500 text-slate-400">—</td>
               </tr>
