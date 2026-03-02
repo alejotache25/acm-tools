@@ -271,7 +271,7 @@ export default function KPIMensual({ operario, readOnly = false }: { operario: s
       }
     }
 
-    const pct_objetivo = totalp_objetivo > 0 ? (total_cobrar / totalp_objetivo) * 100 : null;
+    const pct_objetivo = (total_objetivo - 900) > 0 ? (total_cobrar / (total_objetivo - 900)) * 100 : null;
     return { total_importe, total_cobrar, total_objetivo, total_dietas, total_hext, totalp_importe, totalp_cobrar, totalp_objetivo, pct_objetivo };
   }, [rows, kpiRef]);
 
@@ -804,7 +804,7 @@ export default function KPIMensual({ operario, readOnly = false }: { operario: s
                   {euro(resumen.total_cobrar)}
                 </td>
                 <td className="px-3 py-2 text-right border border-emerald-600 text-emerald-200">
-                  {resumen.totalp_objetivo > 0 ? `÷ ${euro(resumen.totalp_objetivo)}` : '—'}
+                  {(resumen.total_objetivo - 900) > 0 ? `÷ ${euro(resumen.total_objetivo - 900)}` : '—'}
                 </td>
                 <td className="px-3 py-2 text-right border border-emerald-600 text-xl font-black" colSpan={1}>
                   {resumen.pct_objetivo !== null ? `${resumen.pct_objetivo.toFixed(1)}%` : '—'}
