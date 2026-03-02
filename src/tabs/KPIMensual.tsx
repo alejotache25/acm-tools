@@ -258,7 +258,7 @@ export default function KPIMensual({ operario, readOnly = false }: { operario: s
     let totalp_importe = 0, totalp_cobrar = 0, totalp_objetivo = 0;
 
     for (const r of rows) {
-      const cobrar = r.total >= kpiRef ? r.total : 0;
+      const cobrar = (kpiRef === 0 || r.total <= kpiRef) ? r.total : 0;
       total_importe  += r.total;
       total_cobrar   += cobrar;
       total_objetivo += r.md.objetivo;
@@ -714,7 +714,7 @@ export default function KPIMensual({ operario, readOnly = false }: { operario: s
               {rows.map((r, i) => {
                 const isCurrent = r.mes === curMes;
                 const isLocked2 = readOnly || (isOperario && !isCurrent);
-                const cobrar = r.total >= kpiRef ? r.total : 0;
+                const cobrar = (kpiRef === 0 || r.total <= kpiRef) ? r.total : 0;
                 return (
                   <tr key={r.mes} className={`${isCurrent ? 'bg-blue-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} hover:bg-slate-100/60 transition-colors`}>
                     <td className={`px-3 py-1.5 border border-slate-200 font-medium ${isCurrent ? 'text-blue-700 font-bold' : 'text-slate-700'}`}>
