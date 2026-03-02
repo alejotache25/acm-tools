@@ -3,6 +3,7 @@ import { PlusIcon, TrashIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { sendWebhook } from '../lib/webhook';
+import { logDelete } from '../lib/audit';
 import type { Visita } from '../types';
 import SolicitudModal from '../components/SolicitudModal';
 
@@ -69,7 +70,9 @@ export default function Visitas({ operario, readOnly = false }: { operario: stri
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este registro?')) return;
+    const row = rows.find(r => r.id === id);
     await supabase.from('visitas').delete().eq('id', id);
+    if (row) await logDelete(user, 'eliminar_registro', 'visitas', row as unknown as Record<string, unknown>);
     load();
   };
 

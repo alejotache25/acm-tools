@@ -12,7 +12,9 @@ import Modal from '../components/Modal';
 import DashboardPanel from '../tabs/Dashboard';
 import KPIDashboard from '../tabs/KPIDashboard';
 import GestionKPIsPanel from '../components/GestionKPIsPanel';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { logDelete } from '../lib/audit';
 import type { Operario, Usuario, UserRole } from '../types';
 
 async function hashPin(pin: string): Promise<string> {
@@ -55,6 +57,7 @@ const ESTADO_TABS = [
 ];
 
 function AutorizacionesPanel() {
+  const { user } = useAuth();
   const [solicitudes, setSolicitudes]   = useState<Solicitud[]>([]);
   const [filtro, setFiltro]             = useState<'pendiente' | 'aprobada' | 'rechazada'>('pendiente');
   const [loading, setLoading]           = useState(true);
@@ -80,6 +83,7 @@ function AutorizacionesPanel() {
     await (supabase.from('solicitudes') as any)
       .update({ estado: 'aprobada', updated_at: new Date().toISOString() })
       .eq('id', sol.id);
+    await logDelete(user, 'aprobar_solicitud_borrado', sol.tabla, sol as unknown as Record<string, unknown>);
     load();
   };
 
@@ -452,6 +456,7 @@ function PermisosPanel() {
 // ─── Operarios Panel ─────────────────────────────────────────────────────────
 interface JefeOption { id: string; nombre: string }
 function OperariosPanel() {
+  const { user } = useAuth();
   const [operarios, setOperarios] = useState<Usuario[]>([]);
   const [jefes, setJefes] = useState<JefeOption[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -496,6 +501,7 @@ function OperariosPanel() {
     await supabase.from('jefe_operario').delete().eq('operario_nombre', o.nombre);
     await supabase.from('usuarios').delete().eq('id', o.id);
     await supabase.from('operarios').delete().eq('nombre', o.nombre);
+    await logDelete(user, 'eliminar_operario', 'usuarios', o as unknown as Record<string, unknown>);
     load();
   };
 
@@ -644,6 +650,7 @@ function OperariosPanel() {
 
 // ─── Jefes Panel ─────────────────────────────────────────────────────────────
 function JefesPanel() {
+  const { user } = useAuth();
   const [jefes, setJefes] = useState<Usuario[]>([]);
   const [operarios, setOperarios] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -682,6 +689,7 @@ function JefesPanel() {
     if (!confirm(`¿Eliminar al jefe "${j.nombre}"?\nSe eliminarán también sus asignaciones con operarios.\nEsta acción no se puede deshacer.`)) return;
     await supabase.from('jefe_operario').delete().eq('jefe_id', j.id);
     await supabase.from('usuarios').delete().eq('id', j.id);
+    await logDelete(user, 'eliminar_jefe', 'usuarios', j as unknown as Record<string, unknown>);
     load();
   };
 

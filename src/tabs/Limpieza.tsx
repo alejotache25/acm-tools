@@ -3,6 +3,7 @@ import { PlusIcon, TrashIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { sendWebhook } from '../lib/webhook';
+import { logDelete } from '../lib/audit';
 import type { Limpieza as LimpiezaRow } from '../types';
 import SolicitudModal from '../components/SolicitudModal';
 
@@ -79,7 +80,9 @@ export default function Limpieza({ operario, readOnly = false }: { operario: str
 
   const handleDelete = async (id: string) => {
     if (!confirm('¿Eliminar este registro?')) return;
+    const row = rows.find(r => r.id === id);
     await supabase.from('limpieza').delete().eq('id', id);
+    if (row) await logDelete(user, 'eliminar_registro', 'limpieza', row as unknown as Record<string, unknown>);
     load();
   };
 

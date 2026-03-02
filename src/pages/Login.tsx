@@ -38,7 +38,7 @@ export default function Login() {
       const hashed = await hashPin(pin);
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nombre, rol')
+        .select('id, nombre, rol, email')
         .eq('email', email.trim().toLowerCase())
         .eq('pin', hashed)
         .order('created_at')
@@ -49,7 +49,7 @@ export default function Login() {
         setError('Usuario o PIN incorrecto');
         return;
       }
-      login({ id: data.id, nombre: data.nombre, rol: data.rol });
+      login({ id: data.id, nombre: data.nombre, rol: data.rol, email: (data as any).email ?? '' });
       navigate(
         data.rol === 'admin'    ? '/admin' :
         data.rol === 'operario' ? `/operario/${encodeURIComponent(data.nombre)}` :

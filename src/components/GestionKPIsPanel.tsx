@@ -14,7 +14,9 @@ import {
   QueueListIcon,
   ShareIcon,
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { logDelete } from '../lib/audit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -876,6 +878,7 @@ function MapaConexiones({ kpis }: { kpis: KPIDefinition[] }) {
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export default function GestionKPIsPanel() {
+  const { user } = useAuth();
   const [customKPIs, setCustomKPIs] = useState<KPIDefinition[]>([]);
   const [loading, setLoading]       = useState(true);
   const [view, setView]             = useState<'lista' | 'mapa'>('lista');
@@ -928,8 +931,10 @@ export default function GestionKPIsPanel() {
 
   const deleteKPI = async (id: string) => {
     if (!confirm('¿Eliminar este KPI? Esta acción no se puede deshacer.')) return;
+    const kpi = customKPIs.find(k => k.id === id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('kpi_definitions') as any).delete().eq('id', id);
+    if (kpi) await logDelete(user, 'eliminar_kpi', 'kpi_definitions', kpi as unknown as Record<string, unknown>);
     load();
   };
 

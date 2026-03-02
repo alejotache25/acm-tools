@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserIcon, ChevronRightIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { logDelete } from '../lib/audit';
 import TabNav from '../components/TabNav';
 import DashboardPanel from '../tabs/Dashboard';
 import KPIDashboard, { buildSummary, rowToMonthData, MESES, MESES_FULL } from '../tabs/KPIDashboard';
@@ -346,6 +347,7 @@ export default function SeleccionarOperario() {
     if (!confirm(`¿Eliminar al operario "${nombre}"?\nSe eliminará definitivamente del sistema y de todas las asignaciones.`)) return;
     await supabase.from('jefe_operario').delete().eq('operario_nombre', nombre);
     await supabase.from('operarios').delete().eq('nombre', nombre);
+    await logDelete(user, 'eliminar_operario', 'operarios', { nombre });
     setOperarios(prev => prev.filter(n => n !== nombre));
   };
 
