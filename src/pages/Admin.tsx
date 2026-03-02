@@ -678,6 +678,13 @@ function JefesPanel() {
     }));
   };
 
+  const del = async (j: Usuario) => {
+    if (!confirm(`¿Eliminar al jefe "${j.nombre}"?\nSe eliminarán también sus asignaciones con operarios.\nEsta acción no se puede deshacer.`)) return;
+    await supabase.from('jefe_operario').delete().eq('jefe_id', j.id);
+    await supabase.from('usuarios').delete().eq('id', j.id);
+    load();
+  };
+
   const save = async () => {
     if (!form.nombre.trim()) return;
     let jefeId = editing?.id;
@@ -733,9 +740,14 @@ function JefesPanel() {
                 <td className="px-4 py-2 font-medium text-slate-800">{j.nombre}</td>
                 <td className="px-4 py-2 text-slate-600">{(j as any).email || '—'}</td>
                 <td className="px-4 py-2 text-center">
-                  <button onClick={() => openEdit(j)} className="p-1 rounded hover:bg-slate-100">
-                    <PencilIcon className="h-4 w-4 text-blue-600" />
-                  </button>
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => openEdit(j)} className="p-1 rounded hover:bg-slate-100" title="Editar">
+                      <PencilIcon className="h-4 w-4 text-blue-600" />
+                    </button>
+                    <button onClick={() => del(j)} className="p-1 rounded hover:bg-red-50" title="Eliminar">
+                      <TrashIcon className="h-4 w-4 text-red-500" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
