@@ -13,6 +13,7 @@ import {
   EyeSlashIcon,
   KeyIcon,
   UserGroupIcon,
+  PhoneIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -391,11 +392,15 @@ export default function Perfil() {
   const [email, setEmail] = useState('');
   const [horario, setHorario] = useState('09:00 - 18:00');
   const [nombre, setNombre] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [estado, setEstado] = useState('activo');
   const [jefeId, setJefeId] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
   const [editHorario, setEditHorario] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editNombre, setEditNombre] = useState('');
+  const [editTelefono, setEditTelefono] = useState('');
+  const [editEstado, setEditEstado] = useState('activo');
   const [showChangePIN, setShowChangePIN] = useState(false);
   const [showResetPIN, setShowResetPIN] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -412,9 +417,13 @@ export default function Perfil() {
         setEmail(d.email ?? user.email ?? '');
         setHorario(d.horario ?? '09:00 - 18:00');
         setNombre(d.nombre ?? user.nombre ?? '');
+        setTelefono(d.telefono ?? '');
+        setEstado(d.estado ?? 'activo');
         setEditEmail(d.email ?? user.email ?? '');
         setEditHorario(d.horario ?? '09:00 - 18:00');
         setEditNombre(d.nombre ?? user.nombre ?? '');
+        setEditTelefono(d.telefono ?? '');
+        setEditEstado(d.estado ?? 'activo');
       }
       if (user.rol === 'operario') {
         const { data: jo } = await supabase
@@ -429,11 +438,13 @@ export default function Perfil() {
   const saveEdits = async () => {
     if (!user) return;
     await supabase.from('usuarios')
-      .update({ email: editEmail, horario: editHorario, nombre: editNombre } as any)
+      .update({ email: editEmail, horario: editHorario, nombre: editNombre, telefono: editTelefono, estado: editEstado } as any)
       .eq('id', user.id);
     setEmail(editEmail);
     setHorario(editHorario);
     setNombre(editNombre);
+    setTelefono(editTelefono);
+    setEstado(editEstado);
     setEditing(false);
   };
 
@@ -495,10 +506,17 @@ export default function Perfil() {
                 <>
                   <h2 className={`text-xl font-bold ${textPrimary}`}>{displayName}</h2>
                   <RolBadge rol={user.rol} />
-                  <span className="flex items-center gap-1 text-xs text-green-400 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse" />
-                    Activo
-                  </span>
+                  {estado === 'inactivo' ? (
+                    <span className="flex items-center gap-1 text-xs text-red-400 font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
+                      Inactivo
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-green-400 font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse" />
+                      Activo
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -515,6 +533,24 @@ export default function Perfil() {
               )}
             </div>
 
+            {/* Teléfono */}
+            <div className="flex items-center gap-2">
+              <PhoneIcon className={`h-4 w-4 ${textMuted} shrink-0`} />
+              {editing ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <span className={`text-sm ${textMuted} shrink-0`}>+34</span>
+                  <input type="tel" value={editTelefono}
+                    onChange={e => setEditTelefono(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    inputMode="numeric" placeholder="600000000"
+                    className={inputCls} />
+                </div>
+              ) : (
+                <span className={`text-sm ${textSecondary}`}>
+                  {telefono ? `+34 ${telefono}` : '—'}
+                </span>
+              )}
+            </div>
+
             {/* Location */}
             <div className="flex items-center gap-2">
               <MapPinIcon className={`h-4 w-4 ${textMuted} shrink-0`} />
@@ -524,19 +560,31 @@ export default function Perfil() {
         </div>
       </div>
 
-      {/* Horario card */}
+      {/* Horario + Estado card */}
       <div className={`rounded-xl p-5 ${card}`}>
         <div className="flex items-center gap-2 mb-4">
           <ClockIcon className="h-5 w-5 text-blue-400" />
-          <h3 className={`font-semibold ${textPrimary}`}>Horario</h3>
+          <h3 className={`font-semibold ${textPrimary}`}>Horario de trabajo</h3>
         </div>
         {editing ? (
-          <input type="text" value={editHorario}
-            onChange={e => setEditHorario(e.target.value)}
-            placeholder="Ej: 09:00 - 18:00"
-            className={inputCls} />
+          <div className="space-y-3">
+            <input type="text" value={editHorario}
+              onChange={e => setEditHorario(e.target.value)}
+              placeholder="Ej: 09:00 - 18:00"
+              className={inputCls} />
+            <div>
+              <label className={`block text-xs font-medium ${textMuted} mb-1`}>Estado</label>
+              <select value={editEstado} onChange={e => setEditEstado(e.target.value)}
+                className={inputCls}>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+          </div>
         ) : (
-          <p className={`text-sm ${textSecondary}`}>{horario}</p>
+          <div className="space-y-2">
+            <p className={`text-sm ${textSecondary}`}>{horario}</p>
+          </div>
         )}
       </div>
 

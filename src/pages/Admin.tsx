@@ -461,7 +461,7 @@ function OperariosPanel() {
   const [jefes, setJefes] = useState<JefeOption[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
-  const [form, setForm] = useState({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', jefesAsignados: [] as string[] });
+  const [form, setForm] = useState({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', telefono: '', estado: 'activo', jefesAsignados: [] as string[] });
 
   const load = async () => {
     const [{ data: o }, { data: j }] = await Promise.all([
@@ -476,14 +476,14 @@ function OperariosPanel() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', jefesAsignados: [] });
+    setForm({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', telefono: '', estado: 'activo', jefesAsignados: [] });
     setShowModal(true);
   };
 
   const openEdit = async (o: Usuario) => {
     const { data } = await supabase.from('jefe_operario').select('jefe_id').eq('operario_nombre', o.nombre);
     setEditing(o);
-    setForm({ nombre: o.nombre, pin: '', email: (o as any).email || '', horario: (o as any).horario || '09:00 - 18:00', jefesAsignados: (data || []).map(r => r.jefe_id) });
+    setForm({ nombre: o.nombre, pin: '', email: (o as any).email || '', horario: (o as any).horario || '09:00 - 18:00', telefono: (o as any).telefono || '', estado: (o as any).estado || 'activo', jefesAsignados: (data || []).map(r => r.jefe_id) });
     setShowModal(true);
   };
 
@@ -509,7 +509,7 @@ function OperariosPanel() {
     const nombre = form.nombre.trim();
     if (!nombre) return;
     if (editing) {
-      const updates: Record<string, string> = { nombre, email: form.email, horario: form.horario };
+      const updates: Record<string, string> = { nombre, email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
       if (nombre !== editing.nombre) {
@@ -522,7 +522,7 @@ function OperariosPanel() {
       if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
       const hashed = await hashPin(form.pin);
       // PRIMARY: create login user
-      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email, horario: form.horario });
+      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado });
       if (error) { alert(`Error al guardar: ${error.message}`); return; }
       // SECONDARY: sync operarios table for KPI system
       await supabase.from('operarios').delete().eq('nombre', nombre);
@@ -562,7 +562,10 @@ function OperariosPanel() {
           <thead className="bg-slate-600 text-slate-100 text-sm">
             <tr>
               <th className="px-4 py-2 text-left">Nombre</th>
-              <th className="px-4 py-2 text-left">Email</th>
+              <th className="px-4 py-2 text-left">Correo</th>
+              <th className="px-4 py-2 text-left">Teléfono</th>
+              <th className="px-4 py-2 text-left">Horario</th>
+              <th className="px-4 py-2 text-center">Estado</th>
               <th className="px-4 py-2 text-center">Acciones</th>
             </tr>
           </thead>
@@ -571,6 +574,13 @@ function OperariosPanel() {
               <tr key={o.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 font-medium text-slate-800">{o.nombre}</td>
                 <td className="px-4 py-2 text-slate-600">{(o as any).email || '—'}</td>
+                <td className="px-4 py-2 text-slate-600">{(o as any).telefono ? `+34 ${(o as any).telefono}` : '—'}</td>
+                <td className="px-4 py-2 text-slate-600">{(o as any).horario || '—'}</td>
+                <td className="px-4 py-2 text-center">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${(o as any).estado === 'inactivo' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {(o as any).estado === 'inactivo' ? 'Inactivo' : 'Activo'}
+                  </span>
+                </td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => openEdit(o)} className="p-1 rounded hover:bg-slate-100" title="Editar">
@@ -584,7 +594,7 @@ function OperariosPanel() {
               </tr>
             ))}
             {operarios.length === 0 && (
-              <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin operarios</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Sin operarios</td></tr>
             )}
           </tbody>
         </table>
@@ -599,12 +609,29 @@ function OperariosPanel() {
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Correo (usado para el perfil)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Correo</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Horario</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500 bg-slate-200 rounded-lg px-3 py-2 shrink-0">+34</span>
+                <input type="tel" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                  placeholder="600000000" inputMode="numeric"
+                  className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
+              <select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Horario de trabajo</label>
               <input type="text" value={form.horario} onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}
                 placeholder="09:00 - 18:00"
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
@@ -661,7 +688,7 @@ function JefesPanel() {
   const [operarios, setOperarios] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
-  const [form, setForm] = useState({ nombre: '', pin: '', email: '', asignados: [] as string[] });
+  const [form, setForm] = useState({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', telefono: '', estado: 'activo', asignados: [] as string[] });
 
   const load = async () => {
     const [{ data: j }, { data: o }] = await Promise.all([
@@ -674,11 +701,11 @@ function JefesPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm({ nombre: '', pin: '', email: '', asignados: [] }); setShowModal(true); };
+  const openAdd = () => { setEditing(null); setForm({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', telefono: '', estado: 'activo', asignados: [] }); setShowModal(true); };
   const openEdit = async (j: Usuario) => {
     const { data } = await supabase.from('jefe_operario').select('operario_nombre').eq('jefe_id', j.id);
     setEditing(j);
-    setForm({ nombre: j.nombre, pin: '', email: (j as any).email || '', asignados: (data || []).map(r => r.operario_nombre) });
+    setForm({ nombre: j.nombre, pin: '', email: (j as any).email || '', horario: (j as any).horario || '09:00 - 18:00', telefono: (j as any).telefono || '', estado: (j as any).estado || 'activo', asignados: (data || []).map(r => r.operario_nombre) });
     setShowModal(true);
   };
 
@@ -704,7 +731,7 @@ function JefesPanel() {
     let jefeId = editing?.id;
 
     if (editing) {
-      const updates: Record<string, string> = { nombre: form.nombre, email: form.email };
+      const updates: Record<string, string> = { nombre: form.nombre, email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
     } else {
@@ -712,7 +739,7 @@ function JefesPanel() {
       const hashed = await hashPin(form.pin);
       const { data } = await supabase
         .from('usuarios')
-        .insert({ nombre: form.nombre, pin: hashed, rol: 'jefe', email: form.email })
+        .insert({ nombre: form.nombre, pin: hashed, rol: 'jefe', email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado })
         .select('id')
         .single();
       jefeId = data?.id;
@@ -744,7 +771,10 @@ function JefesPanel() {
           <thead className="bg-slate-600 text-slate-100 text-sm">
             <tr>
               <th className="px-4 py-2 text-left">Nombre</th>
-              <th className="px-4 py-2 text-left">Email</th>
+              <th className="px-4 py-2 text-left">Correo</th>
+              <th className="px-4 py-2 text-left">Teléfono</th>
+              <th className="px-4 py-2 text-left">Horario</th>
+              <th className="px-4 py-2 text-center">Estado</th>
               <th className="px-4 py-2 text-center">Acciones</th>
             </tr>
           </thead>
@@ -753,6 +783,13 @@ function JefesPanel() {
               <tr key={j.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 font-medium text-slate-800">{j.nombre}</td>
                 <td className="px-4 py-2 text-slate-600">{(j as any).email || '—'}</td>
+                <td className="px-4 py-2 text-slate-600">{(j as any).telefono ? `+34 ${(j as any).telefono}` : '—'}</td>
+                <td className="px-4 py-2 text-slate-600">{(j as any).horario || '—'}</td>
+                <td className="px-4 py-2 text-center">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${(j as any).estado === 'inactivo' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {(j as any).estado === 'inactivo' ? 'Inactivo' : 'Activo'}
+                  </span>
+                </td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <button onClick={() => openEdit(j)} className="p-1 rounded hover:bg-slate-100" title="Editar">
@@ -766,7 +803,7 @@ function JefesPanel() {
               </tr>
             ))}
             {jefes.length === 0 && (
-              <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin jefes</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Sin jefes</td></tr>
             )}
           </tbody>
         </table>
@@ -781,8 +818,31 @@ function JefesPanel() {
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Correo</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500 bg-slate-200 rounded-lg px-3 py-2 shrink-0">+34</span>
+                <input type="tel" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                  placeholder="600000000" inputMode="numeric"
+                  className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Estado</label>
+              <select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Horario de trabajo</label>
+              <input type="text" value={form.horario} onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}
+                placeholder="09:00 - 18:00"
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
