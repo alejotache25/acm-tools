@@ -461,7 +461,7 @@ function OperariosPanel() {
   const [jefes, setJefes] = useState<JefeOption[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Usuario | null>(null);
-  const [form, setForm] = useState({ nombre: '', pin: '', email: '', jefesAsignados: [] as string[] });
+  const [form, setForm] = useState({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', jefesAsignados: [] as string[] });
 
   const load = async () => {
     const [{ data: o }, { data: j }] = await Promise.all([
@@ -476,14 +476,14 @@ function OperariosPanel() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ nombre: '', pin: '', email: '', jefesAsignados: [] });
+    setForm({ nombre: '', pin: '', email: '', horario: '09:00 - 18:00', jefesAsignados: [] });
     setShowModal(true);
   };
 
   const openEdit = async (o: Usuario) => {
     const { data } = await supabase.from('jefe_operario').select('jefe_id').eq('operario_nombre', o.nombre);
     setEditing(o);
-    setForm({ nombre: o.nombre, pin: '', email: (o as any).email || '', jefesAsignados: (data || []).map(r => r.jefe_id) });
+    setForm({ nombre: o.nombre, pin: '', email: (o as any).email || '', horario: (o as any).horario || '09:00 - 18:00', jefesAsignados: (data || []).map(r => r.jefe_id) });
     setShowModal(true);
   };
 
@@ -509,7 +509,7 @@ function OperariosPanel() {
     const nombre = form.nombre.trim();
     if (!nombre) return;
     if (editing) {
-      const updates: Record<string, string> = { nombre, email: form.email };
+      const updates: Record<string, string> = { nombre, email: form.email, horario: form.horario };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
       if (nombre !== editing.nombre) {
@@ -522,7 +522,7 @@ function OperariosPanel() {
       if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
       const hashed = await hashPin(form.pin);
       // PRIMARY: create login user
-      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email });
+      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email, horario: form.horario });
       if (error) { alert(`Error al guardar: ${error.message}`); return; }
       // SECONDARY: sync operarios table for KPI system
       await supabase.from('operarios').delete().eq('nombre', nombre);
@@ -599,8 +599,14 @@ function OperariosPanel() {
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Correo (usado para el perfil)</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Horario</label>
+              <input type="text" value={form.horario} onChange={e => setForm(f => ({ ...f, horario: e.target.value }))}
+                placeholder="09:00 - 18:00"
                 className="w-full bg-slate-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>

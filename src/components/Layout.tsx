@@ -35,13 +35,24 @@ export default function Layout({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Count pending solicitudes for jefe/admin
+  // Count pending solicitudes + solicitudes_pin for jefe/admin
   useEffect(() => {
     if (!user || user.rol === 'operario') return;
-    (supabase.from('solicitudes') as any)
-      .select('id', { count: 'exact', head: true })
-      .eq('estado', 'pendiente')
-      .then(({ count }: { count: number | null }) => setNotifCount(count ?? 0));
+    const loadCounts = async () => {
+      const [{ count: c1 }, { count: c2 }] = await Promise.all([
+        (supabase.from('solicitudes') as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('estado', 'pendiente'),
+        user.rol === 'jefe'
+          ? (supabase.from('solicitudes_pin') as any)
+              .select('id', { count: 'exact', head: true })
+              .eq('jefe_id', user.id)
+              .eq('estado', 'pendiente')
+          : Promise.resolve({ count: 0 }),
+      ]);
+      setNotifCount((c1 ?? 0) + (c2 ?? 0));
+    };
+    loadCounts();
   }, [user, location.pathname]);
 
   const handleLogout = () => { logout(); navigate('/login'); };
