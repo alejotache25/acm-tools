@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manual de Usuario — ACM Tools</title>
+<style>
+  :root {
+    --blue:    #1e50b4;
+    --green:   #15803d;
+    --amber:   #b45309;
+    --red:     #dc2626;
+    --slate:   #334155;
+    --light:   #f8fafc;
+    --border:  #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    color: #1e293b;
+    background: #f1f5f9;
+  }
+
+  /* ── Layout ── */
+  .page { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e50b4 60%, #0ea5e9 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 48px 40px 40px;
+    margin-bottom: 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    right: -40px; bottom: -40px;
+    width: 220px; height: 220px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.06);
+  }
+  .cover h1 { font-size: 2rem; font-weight: 800; letter-spacing: -.5px; }
+  .cover .sub { font-size: .95rem; opacity: .8; margin-top: 8px; }
+  .cover .version { margin-top: 20px; font-size: .75rem; opacity: .55; }
+  .badge {
+    display: inline-block;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: .75rem;
+    margin-bottom: 14px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 32px;
+  }
+  .toc h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .8px; color: #94a3b8; margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: var(--blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── Sections ── */
+  .section {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+  }
+  h2.role {
+    font-size: 1.1rem;
+    font-weight: 700;
+    padding: 6px 16px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h2.role.blue  { background: #dbeafe; color: #1e40af; }
+  h2.role.green { background: #dcfce7; color: #15803d; }
+  h2.role.amber { background: #fef3c7; color: #92400e; }
+
+  h3 {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--slate);
+    margin: 22px 0 8px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h3 .tab-num {
+    background: var(--blue);
+    color: #fff;
+    border-radius: 6px;
+    padding: 1px 7px;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .3px;
+  }
+
+  p { margin: 6px 0; }
+  ul, ol { margin: 8px 0 8px 20px; }
+  li { margin: 4px 0; }
+
+  /* ── KPI table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: .82rem;
+  }
+  th {
+    background: #f1f5f9;
+    text-align: left;
+    padding: 7px 10px;
+    font-weight: 600;
+    color: #475569;
+    border: 1px solid var(--border);
+  }
+  td {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #fafafa; }
+
+  /* ── Chips ── */
+  .chip {
+    display: inline-block;
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: .78rem;
+    font-weight: 600;
+    margin: 1px 2px;
+  }
+  .chip.ok    { background: #dcfce7; color: #15803d; }
+  .chip.ko    { background: #fee2e2; color: #dc2626; }
+  .chip.dash  { background: #f1f5f9; color: #64748b; }
+  .chip.btn   { background: #dbeafe; color: #1d4ed8; font-family: monospace; }
+  .chip.warn  { background: #fef3c7; color: #92400e; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-left: 4px solid;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: .85rem;
+  }
+  .callout.info  { border-color: #60a5fa; background: #eff6ff; color: #1e40af; }
+  .callout.warn  { border-color: #fbbf24; background: #fffbeb; color: #92400e; }
+  .callout.green { border-color: #4ade80; background: #f0fdf4; color: #15803d; }
+  .callout.red   { border-color: #f87171; background: #fef2f2; color: #991b1b; }
+
+  /* ── Semáforo dots ── */
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .dot.green  { background: #22c55e; }
+  .dot.amber  { background: #f59e0b; }
+  .dot.red    { background: #ef4444; }
+
+  /* ── FAQ ── */
+  details {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+  summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: .88rem;
+    background: #f8fafc;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: '▶';
+    font-size: .6rem;
+    color: #94a3b8;
+    transition: transform .2s;
+  }
+  details[open] summary::before { transform: rotate(90deg); }
+  details > div { padding: 10px 16px 14px; font-size: .88rem; color: #334155; }
+
+  /* ── Print ── */
+  @media print {
+    body { background: #fff; }
+    .page { padding: 0; max-width: 100%; }
+    .section, .toc { border: 1px solid #ccc; page-break-inside: avoid; }
+    .cover { background: #1e3a8a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  @media (max-width: 600px) {
+    .section { padding: 18px 16px; }
+    .cover { padding: 28px 20px; }
+    .cover h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── COVER ── -->
+  <div class="cover">
+    <div class="badge">Manual de Usuario</div>
+    <h1>ACM Tools</h1>
+    <p class="sub">Sistema de gestión de incentivos y control operacional</p>
+    <p class="version">Versión actual · acm-tools.vercel.app</p>
+  </div>
+
+  <!-- ── TOC ── -->
+  <div class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#acceso">Acceso al sistema</a></li>
+      <li><a href="#operario">Perfil Operario</a>
+        <ol>
+          <li><a href="#tab01">01 Incidencias</a></li>
+          <li><a href="#tab02">02 Control Calidad</a></li>
+          <li><a href="#tab03">03 Visitas</a></li>
+          <li><a href="#tab04">04 Limpieza</a></li>
+          <li><a href="#tab05">05 Horas Improductivas</a></li>
+          <li><a href="#tab06">06 ISSUS</a></li>
+          <li><a href="#tab07">07 KPI Mensual</a></li>
+        </ol>
+      </li>
+      <li><a href="#jefe">Perfil Jefe</a></li>
+      <li><a href="#admin">Perfil Administrador</a></li>
+      <li><a href="#faq">Preguntas frecuentes</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       ACCESO
+  ══════════════════════════════════════════════ -->
+  <div class="section" id="acceso">
+    <h2 class="role blue">🔐 Acceso al sistema</h2>
+    <ol>
+      <li>Abre <strong>acm-tools.vercel.app</strong> en tu navegador</li>
+      <li>Introduce tu <strong>nombre de usuario</strong> y tu <strong>PIN</strong></li>
+      <li>Pulsa <strong>Entrar</strong></li>
+    </ol>
+    <div class="callout info" style="margin-top:14px">
+      Hay tres tipos de usuario con pantallas distintas: <strong>Operario</strong>, <strong>Jefe</strong> y <strong>Administrador</strong>. El sistema carga automáticamente la pantalla correcta según tu rol.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       OPERARIO
+  ══════════════════════════════════════════════ -->
+  <div class="section" id="operario">
+    <h2 class="role blue">👷 Perfil Operario</h2>
+    <p>Al entrar verás <strong>7 pestañas</strong> en la parte superior. Cada una corresponde a un tipo de registro diario.</p>
+
+    <h3 id="tab01"><span class="tab-num">01</span> Incidencias</h3>
+    <p>Registra cualquier incidencia ocurrida durante la jornada.</p>
+    <ol>
+      <li>Pulsa <strong>+ Nueva incidencia</strong></li>
+      <li>Rellena el formulario: fecha, descripción, tipo de incidencia</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <h3 id="tab02"><span class="tab-num">02</span> Control Calidad</h3>
+    <p>Registro de controles de calidad realizados en clientes.</p>
+    <ol>
+      <li>Pulsa <strong>+ Nuevo registro</strong></li>
+      <li>Indica el cliente, tipo de control y resultado</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <h3 id="tab03"><span class="tab-num">03</span> Visitas</h3>
+    <p>Registro de visitas realizadas o recibidas.</p>
+    <ol>
+      <li>Pulsa <strong>+ Nueva visita</strong></li>
+      <li>Selecciona el tipo de visita y si fue correcta (OK/KO)</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <h3 id="tab04"><span class="tab-num">04</span> Limpieza</h3>
+    <p>Control del estado de limpieza en vestuario y zonas de trabajo.</p>
+    <ol>
+      <li>Pulsa <strong>+ Nuevo registro</strong></li>
+      <li>Introduce los valores de cada campo</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <h3 id="tab05"><span class="tab-num">05</span> Horas Improductivas</h3>
+    <p>Registro de horas no productivas: recogida de material, esperas, desplazamientos…</p>
+    <ol>
+      <li>Pulsa <strong>+ Nuevo registro</strong></li>
+      <li>Introduce las horas por categoría</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <h3 id="tab06"><span class="tab-num">06</span> ISSUS</h3>
+    <p>Registro de incidencias de Seguridad, Salud, Medioambiente y calidad (ISSUS).</p>
+    <ol>
+      <li>Pulsa <strong>+ Nuevo registro</strong></li>
+      <li>Elige el tipo e introduce la descripción</li>
+      <li>Pulsa <strong>Guardar</strong></li>
+    </ol>
+
+    <!-- ── KPI MENSUAL ── -->
+    <h3 id="tab07"><span class="tab-num">07</span> KPI Mensual</h3>
+    <p>Pestaña principal de incentivos. Muestra una tabla con los <strong>12 meses del año</strong>.</p>
+
+    <div class="callout warn">
+      Solo puedes editar el <strong>mes actual</strong> (marcado con ◀). Los meses anteriores y futuros están bloqueados para operarios.
+    </div>
+
+    <h3 style="border:none; margin-top:16px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Campos que rellenas tú</h3>
+    <table>
+      <thead><tr><th>Campo</th><th>Qué poner</th></tr></thead>
+      <tbody>
+        <tr><td><strong>% Obj — Productividad</strong></td><td>Porcentaje de productividad del mes: <code>&lt; 80%</code>, <code>80%</code>, <code>90%</code>, <code>95%</code>, <code>100%</code>, <code>105%</code>, <code>110%</code> o <code>120%</code></td></tr>
+        <tr><td><strong>Puntos — Control Documental</strong></td><td>Puntuación obtenida: <code>-80</code>, <code>10</code>, <code>20</code>, <code>30</code>, <code>40</code>, <code>50</code>, <code>60</code>, <code>70</code> u <code>80</code></td></tr>
+        <tr><td><strong>Estado — Control Visitas</strong></td><td><span class="chip dash">—</span> no aplica &nbsp; <span class="chip ok">OK</span> correcta &nbsp; <span class="chip ko">KO</span> incorrecta</td></tr>
+        <tr><td><strong>% Ret — Retorno</strong></td><td>Porcentaje de retorno (número libre)</td></tr>
+        <tr><td><strong>Herramientas / Vehículo / Aseo</strong></td><td><span class="chip dash">—</span> no aplica &nbsp; <span class="chip ok">OK</span> correcto &nbsp; <span class="chip ko">KO</span> incorrecto</td></tr>
+        <tr><td><strong>H. Obj</strong></td><td>Horas improductivas objetivo del mes</td></tr>
+        <tr><td><strong>H. Inv</strong></td><td>Horas improductivas reales invertidas</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="border:none; margin-top:16px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Columnas que se calculan solas</h3>
+    <ul>
+      <li><strong>Importe</strong> — euros que genera cada KPI ese mes</li>
+      <li><strong>Acumulado</strong> — suma desde enero hasta ese mes</li>
+      <li><strong>Dif / % / Penaliz.</strong> — penalización por exceso de horas improductivas (39 €/h)</li>
+      <li><strong>TOTAL</strong> — resultado neto del mes (nota: productividad <em>no</em> entra en el total mensual)</li>
+    </ul>
+
+    <h3 style="border:none; margin-top:16px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Botón × — Limpiar mes</h3>
+    <p>Si un mes <strong>no tiene actividad</strong> (vacaciones, baja, ausencia…), pulsa <span class="chip btn">×</span> al final de la fila. La fila queda en gris con guiones y ese mes <strong>no suma ni resta nada</strong> a los acumulados.</p>
+    <p>Para reactivarlo pulsa <span class="chip btn">↺</span> que aparece en su lugar.</p>
+
+    <h3 style="border:none; margin-top:16px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Opción — (neutro)</h3>
+    <p>En Control Visitas, Herramientas, Vehículo y Aseo personal existe la opción <span class="chip dash">—</span>. Significa <em>no aplica</em> ese mes: el campo no suma ni penaliza (0 €).</p>
+
+    <h3 style="border:none; margin-top:16px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Tablas de referencia</h3>
+    <p>Al final de la página hay un desplegable <em>"Ver tablas de referencia y fórmulas"</em> con los valores exactos de cada tramo.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; flex-wrap:wrap;">
+      <div>
+        <p style="font-weight:600; font-size:.82rem; margin-bottom:6px;">Productividad (col C)</p>
+        <table>
+          <thead><tr><th>% Obj</th><th>€/mes</th></tr></thead>
+          <tbody>
+            <tr><td>&lt; 80%</td><td style="color:#64748b">0 €</td></tr>
+            <tr><td>80%</td><td style="color:#15803d">25 €</td></tr>
+            <tr><td>90%</td><td style="color:#15803d">50 €</td></tr>
+            <tr><td>95%</td><td style="color:#15803d">75 €</td></tr>
+            <tr><td>100–120%</td><td style="color:#15803d">100 €</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:.75rem; color:#94a3b8; margin-top:4px; font-style:italic;">No se incluye en el TOTAL final</p>
+      </div>
+      <div>
+        <p style="font-weight:600; font-size:.82rem; margin-bottom:6px;">Control Documental (col F)</p>
+        <table>
+          <thead><tr><th>Puntos</th><th>€/mes</th></tr></thead>
+          <tbody>
+            <tr><td>-80</td><td style="color:#dc2626">-25 €</td></tr>
+            <tr><td>10 – 49</td><td style="color:#15803d">100 €</td></tr>
+            <tr><td>50 – 59</td><td style="color:#15803d">75 €</td></tr>
+            <tr><td>60 – 69</td><td style="color:#15803d">50 €</td></tr>
+            <tr><td>70 – 79</td><td style="color:#15803d">25 €</td></tr>
+            <tr><td>≥ 80</td><td style="color:#64748b">0 €</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3 style="border:none; margin-top:20px; font-size:.88rem; color:#475569; text-transform:uppercase; letter-spacing:.5px;">Resumen de Incentivos</h3>
+    <p>Debajo de la tabla mensual aparece el <strong>Resumen de Incentivos</strong>:</p>
+    <ul>
+      <li><strong>Importe</strong> — KPI total generado cada mes</li>
+      <li><strong>A cobrar</strong> — lo que supera el umbral KPI (solo si es positivo)</li>
+      <li><strong>Objetivo / Dietas / H. Extra</strong> — campos manuales editables por mes</li>
+      <li><strong>% Objetivo</strong> — porcentaje logrado del objetivo anual</li>
+    </ul>
+    <div class="callout green">Los cambios se guardan automáticamente. No hay que pulsar ningún botón de guardar en KPI Mensual.</div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       JEFE
+  ══════════════════════════════════════════════ -->
+  <div class="section" id="jefe">
+    <h2 class="role green">👔 Perfil Jefe</h2>
+    <p>Al entrar ves <strong>4 pestañas</strong>.</p>
+
+    <h3>Técnicos</h3>
+    <p>Lista de técnicos asignados a ti.</p>
+    <ul>
+      <li>Pulsa sobre un técnico para acceder a sus pestañas (01–07) y ver o editar sus datos</li>
+      <li>Pulsa el icono 🗑️ rojo para <strong>eliminar definitivamente</strong> a un operario del sistema. Aparecerá una confirmación antes de borrar</li>
+    </ul>
+    <div class="callout warn">Esta acción no se puede deshacer. El operario se eliminará del sistema y de todas las asignaciones.</div>
+
+    <h3>Dashboard</h3>
+    <p>Resumen visual de todos tus técnicos asignados: incidencias, calidad, visitas, limpieza, horas improductivas e ISSUS del período seleccionado.</p>
+
+    <h3>KPI Mensual</h3>
+    <p>Vista de los datos KPI de todos tus técnicos. Puedes consultar y editar los datos de cualquier mes para cualquiera de los operarios asignados.</p>
+
+    <h3>Semáforo KPI</h3>
+    <p>Visión de un vistazo del estado de todos tus técnicos ese mes:</p>
+    <ul>
+      <li><span class="dot green"></span><strong>Verde</strong> — KPI total supera el umbral de cobro</li>
+      <li><span class="dot amber"></span><strong>Amarillo</strong> — KPI positivo pero por debajo del umbral</li>
+      <li><span class="dot red"></span><strong>Rojo</strong> — KPI negativo ese mes</li>
+    </ul>
+    <p>También muestra:</p>
+    <ul>
+      <li><strong>Incentivos acumulados</strong> del año por técnico (con barra de progreso)</li>
+      <li><strong>Alertas de meses sin rellenar</strong> — técnicos con meses en blanco</li>
+      <li><strong>Comparativa de productividad</strong> del mes seleccionado</li>
+    </ul>
+    <p>Usa los controles <strong>‹ año ›</strong> y el selector de mes para navegar entre períodos.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       ADMIN
+  ══════════════════════════════════════════════ -->
+  <div class="section" id="admin">
+    <h2 class="role amber">🛡️ Perfil Administrador</h2>
+    <p>Accede a todo lo anterior más las siguientes secciones de gestión.</p>
+
+    <h3>Dashboard</h3>
+    <p>Resumen global de todos los operarios activos.</p>
+
+    <h3>KPI Mensual</h3>
+    <p>Vista completa de KPIs de todos los operarios del sistema.</p>
+
+    <h3>Autorizaciones</h3>
+    <p>Gestiona las solicitudes pendientes de autorización enviadas por los técnicos.</p>
+
+    <h3>Gestión KPIs</h3>
+    <p>Panel avanzado para configurar objetivos y parámetros KPI por operario.</p>
+
+    <h3>Permisos y Roles</h3>
+    <p>Asigna y modifica el rol de cada usuario del sistema: operario, jefe o administrador.</p>
+
+    <h3>Operarios</h3>
+    <table>
+      <thead><tr><th>Acción</th><th>Cómo</th></tr></thead>
+      <tbody>
+        <tr><td>Ver lista</td><td>Tabla con nombre, email y estado activo/inactivo</td></tr>
+        <tr><td>✏️ Editar</td><td>Modifica nombre, email o estado (activo/inactivo)</td></tr>
+        <tr><td>🗑️ Eliminar</td><td>Borra el operario del sistema y lo desvincula de todos los jefes. <strong>Pide confirmación</strong></td></tr>
+        <tr><td>+ Añadir</td><td>Crea un nuevo operario introduciendo nombre, email y PIN</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Jefes</h3>
+    <table>
+      <thead><tr><th>Acción</th><th>Cómo</th></tr></thead>
+      <tbody>
+        <tr><td>✏️ Editar</td><td>Cambia datos del jefe y marca/desmarca qué operarios tiene asignados</td></tr>
+        <tr><td>+ Añadir</td><td>Crea un nuevo jefe y le asigna sus operarios</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Informes (PDF)</h3>
+    <p>Genera informes mensuales en PDF para cualquier operario.</p>
+    <ol>
+      <li>Selecciona el <strong>operario</strong>, el <strong>mes</strong> y el <strong>año</strong></li>
+      <li>Pulsa <strong>Vista previa</strong> 👁 para revisar el informe antes de descargarlo</li>
+      <li>Pulsa <strong>Descargar PDF</strong> para guardar el informe en tu equipo</li>
+      <li>Opcionalmente configura el envío por email pulsando el icono ⚙️</li>
+    </ol>
+
+    <h3>Mis Registros</h3>
+    <p>Vista consolidada de todos los registros del mes actual. Puedes filtrar por módulo (incidencias, calidad, visitas…) y por operario.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       FAQ
+  ══════════════════════════════════════════════ -->
+  <div class="section" id="faq">
+    <h2 class="role blue">❓ Preguntas frecuentes</h2>
+
+    <details>
+      <summary>¿Puedo editar meses anteriores siendo operario?</summary>
+      <div>No. Solo puedes editar el mes en curso. Los meses pasados los puede modificar tu jefe o el administrador.</div>
+    </details>
+
+    <details>
+      <summary>¿Qué hago si no he trabajado un mes completo (baja, vacaciones)?</summary>
+      <div>Pulsa el botón <span class="chip btn">×</span> al final de esa fila en KPI Mensual. El mes queda limpio (todo en guiones) y no penaliza ni suma a los acumulados. Para volver a activarlo pulsa <span class="chip btn">↺</span>.</div>
+    </details>
+
+    <details>
+      <summary>¿Qué significa la opción "—" en los selectores?</summary>
+      <div>Significa <em>no aplica</em>. Ese campo no cuenta ni positivo ni negativo ese mes (0 €). Es diferente a KO, que puede conllevar penalización en Control Visitas.</div>
+    </details>
+
+    <details>
+      <summary>¿Qué pasa si mi productividad es menor del 80%?</summary>
+      <div>Selecciona <strong>&lt; 80%</strong> en el desplegable de Productividad. El importe de productividad será 0 € y el acumulado permanece igual (no suma ni resta).</div>
+    </details>
+
+    <details>
+      <summary>¿Cuándo cobro incentivos?</summary>
+      <div>El sistema calcula <em>A cobrar</em> restando el umbral KPI al total mensual. Solo los meses en que superas ese umbral generan cobro acumulado. El porcentaje <strong>% Objetivo</strong> al final del año indica qué parte del objetivo anual has alcanzado.</div>
+    </details>
+
+    <details>
+      <summary>¿Por qué la productividad no aparece en el TOTAL mensual?</summary>
+      <div>La productividad tiene su propia columna de acumulado (col D) pero <strong>no entra en el TOTAL</strong> mensual (col AC). Es un indicador separado que se sigue de forma independiente.</div>
+    </details>
+
+    <details>
+      <summary>¿Puedo ver el historial de años anteriores?</summary>
+      <div>Sí. En KPI Mensual usa los botones <span class="chip btn">‹ año ›</span> para navegar entre años. Los datos de cada año se almacenan por separado.</div>
+    </details>
+
+    <details>
+      <summary>¿Se pierden los datos si cierro el navegador?</summary>
+      <div>Los datos de KPI Mensual se guardan automáticamente en el dispositivo al instante. No es necesario pulsar ningún botón de guardar. Los registros de las pestañas 01–06 se guardan en la base de datos al pulsar Guardar.</div>
+    </details>
+
+    <details>
+      <summary>Soy jefe y un operario ya no trabaja aquí, ¿qué hago?</summary>
+      <div>En tu pestaña <strong>Técnicos</strong>, pulsa el icono 🗑️ rojo junto al operario. Se eliminará definitivamente del sistema. Si prefieres solo desvincularlo de ti sin borrarlo del sistema, contacta con el administrador para que lo reasigne.</div>
+    </details>
+  </div>
+
+  <div style="text-align:center; color:#94a3b8; font-size:.75rem; margin-top:24px; padding-bottom:16px;">
+    ACM Tools · acm-tools.vercel.app
+  </div>
+
+</div>
+</body>
+</html>

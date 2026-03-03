@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ReactNode, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { retrySyncPending } from './lib/webhook';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -8,6 +9,8 @@ import Admin from './pages/Admin';
 import SeleccionarOperario from './pages/SeleccionarOperario';
 import Operario from './pages/Operario';
 import MisRegistros from './pages/MisRegistros';
+import Informes from './pages/Informes';
+import Perfil from './pages/Perfil';
 
 const SYNC_TABLES = [
   { table: 'incidencias',         fuente: '01_DB_INCIDENCIAS' },
@@ -18,10 +21,11 @@ const SYNC_TABLES = [
   { table: 'issus',               fuente: '06_INCIDENCIAS_ISSUS' },
 ];
 
-function PrivateRoute({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
+function PrivateRoute({ children, adminOnly = false, jefeOnly = false }: { children: ReactNode; adminOnly?: boolean; jefeOnly?: boolean }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (adminOnly && user.rol !== 'admin') return <Navigate to="/seleccionar-operario" replace />;
+  if (jefeOnly && user.rol === 'operario') return <Navigate to={`/operario/${encodeURIComponent(user.nombre)}`} replace />;
   return <>{children}</>;
 }
 
@@ -45,7 +49,7 @@ function AppRoutes() {
       } />
 
       <Route path="/seleccionar-operario" element={
-        <PrivateRoute>
+        <PrivateRoute jefeOnly>
           <Layout><SeleccionarOperario /></Layout>
         </PrivateRoute>
       } />
@@ -62,6 +66,18 @@ function AppRoutes() {
         </PrivateRoute>
       } />
 
+      <Route path="/informes" element={
+        <PrivateRoute jefeOnly>
+          <Layout><Informes /></Layout>
+        </PrivateRoute>
+      } />
+
+      <Route path="/perfil" element={
+        <PrivateRoute>
+          <Layout><Perfil /></Layout>
+        </PrivateRoute>
+      } />
+
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
@@ -70,10 +86,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
