@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ReactNode, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { retrySyncPending } from './lib/webhook';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -9,6 +10,7 @@ import SeleccionarOperario from './pages/SeleccionarOperario';
 import Operario from './pages/Operario';
 import MisRegistros from './pages/MisRegistros';
 import Informes from './pages/Informes';
+import Perfil from './pages/Perfil';
 
 const SYNC_TABLES = [
   { table: 'incidencias',         fuente: '01_DB_INCIDENCIAS' },
@@ -70,6 +72,12 @@ function AppRoutes() {
         </PrivateRoute>
       } />
 
+      <Route path="/perfil" element={
+        <PrivateRoute>
+          <Layout><Perfil /></Layout>
+        </PrivateRoute>
+      } />
+
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
@@ -78,10 +86,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
