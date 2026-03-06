@@ -15,6 +15,7 @@ import GestionKPIsPanel from '../components/GestionKPIsPanel';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logDelete } from '../lib/audit';
+import { sanitizeName, sanitizeEmail, sanitizePhone, sanitizeSchedule } from '../lib/sanitize';
 import type { Operario, Usuario, UserRole } from '../types';
 
 async function hashPin(pin: string): Promise<string> {
@@ -506,23 +507,26 @@ function OperariosPanel() {
   };
 
   const save = async () => {
-    const nombre = form.nombre.trim();
+    const nombre = sanitizeName(form.nombre);
+    const email  = sanitizeEmail(form.email);
+    const horario = sanitizeSchedule(form.horario);
+    const telefono = sanitizePhone(form.telefono);
     if (!nombre) return;
     if (editing) {
-      const updates: Record<string, string> = { nombre, email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado };
+      const updates: Record<string, string> = { nombre, email, horario, telefono, estado: form.estado };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
       if (nombre !== editing.nombre) {
-        await supabase.from('operarios').update({ nombre, email: form.email }).eq('nombre', editing.nombre);
+        await supabase.from('operarios').update({ nombre, email }).eq('nombre', editing.nombre);
         await supabase.from('jefe_operario').update({ operario_nombre: nombre }).eq('operario_nombre', editing.nombre);
       } else {
-        await supabase.from('operarios').update({ email: form.email }).eq('nombre', nombre);
+        await supabase.from('operarios').update({ email }).eq('nombre', nombre);
       }
     } else {
       if (form.pin.length !== 4) return alert('El PIN debe tener 4 dígitos');
       const hashed = await hashPin(form.pin);
       // PRIMARY: create login user
-      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado });
+      const { error } = await supabase.from('usuarios').insert({ nombre, pin: hashed, rol: 'operario', email, horario, telefono, estado: form.estado });
       if (error) { alert(`Error al guardar: ${error.message}`); return; }
       // SECONDARY: sync operarios table for KPI system
       await supabase.from('operarios').delete().eq('nombre', nombre);
@@ -727,11 +731,15 @@ function JefesPanel() {
   };
 
   const save = async () => {
-    if (!form.nombre.trim()) return;
+    const nombre   = sanitizeName(form.nombre);
+    const email    = sanitizeEmail(form.email);
+    const horario  = sanitizeSchedule(form.horario);
+    const telefono = sanitizePhone(form.telefono);
+    if (!nombre) return;
     let jefeId = editing?.id;
 
     if (editing) {
-      const updates: Record<string, string> = { nombre: form.nombre, email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado };
+      const updates: Record<string, string> = { nombre, email, horario, telefono, estado: form.estado };
       if (form.pin.length === 4) updates.pin = await hashPin(form.pin);
       await supabase.from('usuarios').update(updates).eq('id', editing.id);
     } else {
@@ -739,7 +747,7 @@ function JefesPanel() {
       const hashed = await hashPin(form.pin);
       const { data } = await supabase
         .from('usuarios')
-        .insert({ nombre: form.nombre, pin: hashed, rol: 'jefe', email: form.email, horario: form.horario, telefono: form.telefono, estado: form.estado })
+        .insert({ nombre, pin: hashed, rol: 'jefe', email, horario, telefono, estado: form.estado })
         .select('id')
         .single();
       jefeId = data?.id;

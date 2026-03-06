@@ -11,10 +11,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const brevoKey  = Deno.env.get('BREVO_API_KEY');
-  const fromEmail = Deno.env.get('FROM_EMAIL') ?? 'serviciosautomatizacion0210@gmail.com';
+  const fromEmail = Deno.env.get('FROM_EMAIL');
 
   if (!brevoKey) {
     return new Response(JSON.stringify({ error: 'BREVO_API_KEY not set' }), { status: 500 });
+  }
+  if (!fromEmail) {
+    return new Response(JSON.stringify({ error: 'FROM_EMAIL not set' }), { status: 500 });
   }
 
   const body = await req.json();

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { checkRateLimit, getRateLimitWait, clearRateLimit } from '../lib/rateLimit';
+import { sanitizeEmail } from '../lib/sanitize';
 
 async function hashPin(pin: string): Promise<string> {
   const buf = new TextEncoder().encode(pin);
@@ -28,10 +30,20 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || pin.length !== 4) {
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail || pin.length !== 4) {
       setError('Introduce tu correo y un PIN de 4 dígitos');
       return;
     }
+
+    // Rate limiting: max 5 login attempts per email per 60 seconds
+    const rateLimitKey = `login:${cleanEmail}`;
+    if (!checkRateLimit(rateLimitKey, 5, 60_000)) {
+      const wait = getRateLimitWait(rateLimitKey, 60_000);
+      setError(`Demasiados intentos. Espera ${wait} segundos antes de volver a intentarlo.`);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -39,7 +51,7 @@ export default function Login() {
       const { data } = await supabase
         .from('usuarios')
         .select('id, nombre, rol, email')
-        .eq('email', email.trim().toLowerCase())
+        .eq('email', cleanEmail)
         .eq('pin', hashed)
         .order('created_at')
         .limit(1)
@@ -49,6 +61,7 @@ export default function Login() {
         setError('Usuario o PIN incorrecto');
         return;
       }
+      clearRateLimit(rateLimitKey);
       login({ id: data.id, nombre: data.nombre, rol: data.rol, email: (data as any).email ?? '' });
       navigate(
         data.rol === 'admin'    ? '/admin' :

@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { sanitizeName, sanitizeEmail, sanitizePhone, sanitizeSchedule } from '../lib/sanitize';
 
 async function hashPin(pin: string): Promise<string> {
   const buf = new TextEncoder().encode(pin);
@@ -437,13 +438,18 @@ export default function Perfil() {
 
   const saveEdits = async () => {
     if (!user) return;
+    const cleanNombre   = sanitizeName(editNombre);
+    const cleanEmail    = sanitizeEmail(editEmail);
+    const cleanHorario  = sanitizeSchedule(editHorario);
+    const cleanTelefono = sanitizePhone(editTelefono);
+    if (!cleanNombre) return;
     await supabase.from('usuarios')
-      .update({ email: editEmail, horario: editHorario, nombre: editNombre, telefono: editTelefono, estado: editEstado } as any)
+      .update({ email: cleanEmail, horario: cleanHorario, nombre: cleanNombre, telefono: cleanTelefono, estado: editEstado } as any)
       .eq('id', user.id);
-    setEmail(editEmail);
-    setHorario(editHorario);
-    setNombre(editNombre);
-    setTelefono(editTelefono);
+    setEmail(cleanEmail);
+    setHorario(cleanHorario);
+    setNombre(cleanNombre);
+    setTelefono(cleanTelefono);
     setEstado(editEstado);
     setEditing(false);
   };
