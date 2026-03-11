@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ACM Tools — Manual de Usuario</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --blue: #1e40af;
+    --blue-light: #dbeafe;
+    --slate: #334155;
+    --slate-light: #f1f5f9;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+    --green: #15803d;
+    --green-light: #dcfce7;
+    --amber: #92400e;
+    --amber-light: #fef3c7;
+    --red: #991b1b;
+    --red-light: #fee2e2;
+    --purple: #6b21a8;
+    --purple-light: #f3e8ff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.65;
+    color: var(--text);
+    background: #fff;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
+    color: white;
+    padding: 72px 64px 60px;
+    min-height: 220px;
+    page-break-after: always;
+  }
+  .cover-logo {
+    font-size: 11pt;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 32px;
+  }
+  .cover h1 {
+    font-size: 34pt;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    letter-spacing: -0.5px;
+  }
+  .cover-sub {
+    font-size: 13pt;
+    opacity: 0.75;
+    font-weight: 300;
+    margin-bottom: 40px;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    padding-top: 24px;
+    font-size: 9pt;
+    opacity: 0.65;
+  }
+  .cover-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* ── TOC ── */
+  .toc {
+    padding: 48px 64px;
+    page-break-after: always;
+    background: var(--slate-light);
+    border-left: 4px solid var(--blue);
+  }
+  .toc h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+  }
+  .toc ol { list-style: none; counter-reset: toc; }
+  .toc > ol > li {
+    counter-increment: toc;
+    margin-bottom: 6px;
+  }
+  .toc > ol > li::before {
+    content: counter(toc) ". ";
+    font-weight: 700;
+    color: var(--blue);
+    min-width: 24px;
+    display: inline-block;
+  }
+  .toc a { color: var(--text); text-decoration: none; font-weight: 500; font-size: 10.5pt; }
+  .toc a:hover { color: var(--blue); }
+  .toc .sub { list-style: none; padding-left: 28px; margin-top: 4px; }
+  .toc .sub li { margin-bottom: 3px; }
+  .toc .sub a { font-weight: 400; color: var(--muted); font-size: 9.5pt; }
+
+  /* ── Page content ── */
+  .content { padding: 48px 64px; }
+
+  /* ── Section headers ── */
+  .section-divider {
+    background: linear-gradient(90deg, var(--blue) 0%, #3b82f6 100%);
+    color: white;
+    padding: 14px 64px;
+    margin: 0 -64px 32px;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    font-size: 18pt;
+    font-weight: 800;
+    color: var(--blue);
+    margin-bottom: 16px;
+    margin-top: 40px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--blue-light);
+    page-break-after: avoid;
+  }
+  h2:first-child { margin-top: 0; }
+
+  h3 {
+    font-size: 12pt;
+    font-weight: 700;
+    color: var(--slate);
+    margin: 28px 0 12px;
+    page-break-after: avoid;
+  }
+
+  h4 {
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: var(--text);
+    margin: 20px 0 8px;
+    page-break-after: avoid;
+  }
+
+  p { margin-bottom: 10px; }
+
+  /* ── Module badges ── */
+  .module-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--slate-light);
+    border-left: 4px solid var(--blue);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 24px 0 16px;
+    page-break-after: avoid;
+  }
+  .module-badge {
+    background: var(--blue);
+    color: white;
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .module-title { font-size: 12pt; font-weight: 700; color: var(--slate); }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+    margin: 12px 0 20px;
+    page-break-inside: avoid;
+  }
+  thead tr { background: var(--slate); color: white; }
+  thead th {
+    padding: 9px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 8.5pt;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  tbody tr:nth-child(even) { background: var(--slate-light); }
+  tbody tr:hover { background: var(--blue-light); }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody td:first-child { font-weight: 500; }
+
+  /* ── Role cards ── */
+  .role-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .role-card {
+    border-radius: 10px;
+    padding: 20px;
+    border: 1px solid var(--border);
+  }
+  .role-card.admin { background: var(--purple-light); border-color: #d8b4fe; }
+  .role-card.jefe  { background: var(--blue-light);   border-color: #93c5fd; }
+  .role-card.op    { background: var(--green-light);  border-color: #86efac; }
+  .role-card h4 { font-size: 11pt; margin: 0 0 10px; }
+  .role-card.admin h4 { color: var(--purple); }
+  .role-card.jefe  h4 { color: var(--blue); }
+  .role-card.op    h4 { color: var(--green); }
+  .role-card ul { list-style: none; padding: 0; }
+  .role-card ul li { font-size: 9pt; padding: 3px 0; color: var(--muted); }
+  .role-card ul li::before { content: "✓ "; font-weight: 700; }
+  .role-card.admin ul li::before { color: var(--purple); }
+  .role-card.jefe  ul li::before { color: var(--blue); }
+  .role-card.op    ul li::before { color: var(--green); }
+
+  /* ── Callout boxes ── */
+  .callout {
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 9.5pt;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+  }
+  .callout-icon { font-size: 14pt; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+  .callout.info    { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+  .callout.warning { background: var(--amber-light);  border-left: 4px solid #d97706; }
+  .callout.danger  { background: var(--red-light);    border-left: 4px solid #dc2626; }
+  .callout.success { background: var(--green-light);  border-left: 4px solid #16a34a; }
+  .callout.info b  { color: var(--blue); }
+  .callout.warning b { color: #92400e; }
+  .callout.danger  b { color: var(--red); }
+  .callout.success b { color: var(--green); }
+  .callout p { margin: 0; }
+
+  /* ── Steps ── */
+  .steps { list-style: none; padding: 0; margin: 12px 0; counter-reset: steps; }
+  .steps li {
+    counter-increment: steps;
+    display: flex;
+    gap: 14px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+  }
+  .steps li::before {
+    content: counter(steps);
+    background: var(--blue);
+    color: white;
+    font-size: 8.5pt;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* ── Sync status ── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 8.5pt;
+    font-weight: 600;
+  }
+  .badge-green  { background: var(--green-light);  color: var(--green); }
+  .badge-amber  { background: var(--amber-light);  color: var(--amber); }
+  .badge-blue   { background: var(--blue-light);   color: var(--blue); }
+  .badge-red    { background: var(--red-light);    color: var(--red); }
+
+  /* ── Formula box ── */
+  .formula {
+    background: #0f172a;
+    color: #7dd3fc;
+    font-family: 'Courier New', monospace;
+    font-size: 9pt;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 10px 0;
+    page-break-inside: avoid;
+  }
+
+  /* ── KPI section colors ── */
+  .kpi-prod   { background: #1e3a8a; }
+  .kpi-cal    { background: #064e3b; }
+  .kpi-ord    { background: #78350f; }
+  .kpi-hi     { background: #4c1d95; }
+  .kpi-header {
+    color: white;
+    font-size: 8.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 12px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 8px;
+  }
+
+  /* ── FAQ ── */
+  .faq { margin: 16px 0; }
+  .faq-q {
+    font-weight: 600;
+    color: var(--blue);
+    font-size: 10pt;
+    margin-bottom: 5px;
+    padding-left: 16px;
+    position: relative;
+  }
+  .faq-q::before {
+    content: "?";
+    position: absolute;
+    left: 0;
+    font-weight: 800;
+    color: var(--blue);
+  }
+  .faq-a {
+    font-size: 9.5pt;
+    color: var(--muted);
+    padding-left: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Print / PDF ── */
+  @media print {
+    @page { margin: 0; size: A4; }
+    .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .section-divider { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    thead tr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .role-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .callout { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .formula { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .kpi-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .module-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .toc { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { page-break-after: avoid; }
+    h3 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+    .callout { page-break-inside: avoid; }
+  }
+
+  /* Print button (hidden in PDF) */
+  .print-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 11pt;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(30,64,175,0.4);
+    z-index: 999;
+    font-family: inherit;
+  }
+  .print-btn:hover { background: #1d4ed8; }
+  @media print { .print-btn { display: none; } }
+
+  ul, ol { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin-bottom: 4px; }
+  strong { font-weight: 600; }
+  code {
+    background: var(--slate-light);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 8.5pt;
+    font-family: 'Courier New', monospace;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+  .page-break { page-break-before: always; }
+  .no-break { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">⬇ Guardar como PDF</button>
+
+<!-- ══════════════════════════════════════════════
+     PORTADA
+══════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">ACM Tools</div>
+  <h1>Manual<br>de Usuario</h1>
+  <div class="cover-sub">Guía completa del aplicativo de gestión de KPIs y registros para equipos técnicos</div>
+  <div class="cover-meta">
+    <span>📋 Versión 2025</span>
+    <span>👥 Roles: Administrador · Jefe · Operario</span>
+    <span>🛠 React 18 + Supabase</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     ÍNDICE
+══════════════════════════════════════════════ -->
+<div class="toc">
+  <h2>Índice de contenidos</h2>
+  <ol>
+    <li><a href="#s1">¿Qué es ACM Tools?</a></li>
+    <li><a href="#s2">Acceso y Login</a></li>
+    <li><a href="#s3">Roles y permisos</a></li>
+    <li><a href="#s4">Navegación general</a></li>
+    <li><a href="#s5">Módulos de registro del operario</a>
+      <ul class="sub">
+        <li><a href="#m01">01 Incidencias</a></li>
+        <li><a href="#m02">02 Control de Calidad</a></li>
+        <li><a href="#m03">03 Visitas</a></li>
+        <li><a href="#m04">04 Limpieza</a></li>
+        <li><a href="#m05">05 Horas Improductivas</a></li>
+        <li><a href="#m06">06 ISSUS</a></li>
+        <li><a href="#m07">07 KPI Mensual</a></li>
+      </ul>
+    </li>
+    <li><a href="#s6">Mis Registros</a></li>
+    <li><a href="#s7">Informes (PDF)</a></li>
+    <li><a href="#s8">Panel de Administración</a>
+      <ul class="sub">
+        <li><a href="#a1">Dashboard general</a></li>
+        <li><a href="#a2">KPI Mensual — Vista global</a></li>
+        <li><a href="#a3">Permisos y Roles</a></li>
+        <li><a href="#a4">Operarios</a></li>
+        <li><a href="#a5">Jefes</a></li>
+        <li><a href="#a6">Usuarios Operario</a></li>
+        <li><a href="#a7">Configuración</a></li>
+      </ul>
+    </li>
+    <li><a href="#s9">Sincronización con n8n</a></li>
+    <li><a href="#s10">Preguntas frecuentes</a></li>
+  </ol>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     CONTENIDO
+══════════════════════════════════════════════ -->
+<div class="content">
+
+<!-- 1. QUÉ ES -->
+<h2 id="s1">1. ¿Qué es ACM Tools?</h2>
+<p>ACM Tools es una aplicación web de gestión de KPIs y registros para equipos técnicos. Permite a los operarios registrar su actividad diaria en seis módulos especializados y calcular automáticamente los incentivos mensuales mediante una hoja de KPI.</p>
+<p>Los supervisores (jefes) gestionan y supervisan los datos de sus operarios asignados. El administrador controla la configuración global del sistema, los usuarios y los permisos.</p>
+
+<div class="callout info">
+  <div class="callout-icon">ℹ️</div>
+  <div><p><b>Tecnología:</b> La aplicación funciona en el navegador web. No requiere instalación. Los datos de los módulos 01–06 se almacenan en la nube (Supabase). Los datos del KPI Mensual (pestaña 07) se almacenan localmente en el navegador.</p></div>
+</div>
+
+<hr>
+
+<!-- 2. LOGIN -->
+<h2 id="s2">2. Acceso y Login</h2>
+<p>Al abrir la aplicación se muestra la pantalla de inicio de sesión. Introduce tus credenciales para acceder.</p>
+
+<h3>Campos de acceso</h3>
+<table>
+  <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Nombre</td><td>Nombre de usuario tal como fue creado por el administrador. Distingue mayúsculas/minúsculas.</td></tr>
+    <tr><td>PIN</td><td>Código numérico de 4 dígitos asignado por el administrador.</td></tr>
+  </tbody>
+</table>
+
+<h3>Redirección tras login</h3>
+<table>
+  <thead><tr><th>Rol</th><th>Destino</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge badge-red">Administrador</span></td><td>Panel de Administración <code>/admin</code></td></tr>
+    <tr><td><span class="badge badge-blue">Jefe / Supervisor</span></td><td>Selector de operarios <code>/seleccionar-operario</code></td></tr>
+    <tr><td><span class="badge badge-green">Operario</span></td><td>Su propio perfil <code>/operario/[nombre]</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout warning">
+  <div class="callout-icon">⚠️</div>
+  <div><p><b>PIN olvidado:</b> Si no recuerdas tu PIN, contacta con el administrador. Puede restablecerlo desde el panel de administración sin ver el PIN anterior.</p></div>
+</div>
+
+<hr>
+
+<!-- 3. ROLES -->
+<div class="page-break"></div>
+<h2 id="s3">3. Roles y permisos</h2>
+<p>El sistema tiene tres roles con distintos niveles de acceso.</p>
+
+<div class="role-grid">
+  <div class="role-card admin">
+    <h4>🔐 Administrador</h4>
+    <ul>
+      <li>Acceso completo al sistema</li>
+      <li>Gestiona usuarios y roles</li>
+      <li>Configura jefes y asignaciones</li>
+      <li>Accede a todos los operarios</li>
+      <li>Configura permisos globales</li>
+      <li>Panel de administración completo</li>
+    </ul>
+  </div>
+  <div class="role-card jefe">
+    <h4>👔 Jefe / Supervisor</h4>
+    <ul>
+      <li>Lista de sus operarios asignados</li>
+      <li>Rellena módulos de sus operarios</li>
+      <li>Vista solo lectura en otros</li>
+      <li>Genera informes PDF del equipo</li>
+      <li>Consulta registros del mes</li>
+    </ul>
+  </div>
+  <div class="role-card op">
+    <h4>🔧 Operario</h4>
+    <ul>
+      <li>Solo accede a su propio perfil</li>
+      <li>Rellena módulos del mes actual</li>
+      <li>KPI meses anteriores: solo lectura</li>
+      <li>Consulta sus propios registros</li>
+      <li>Sin acceso a informes ni admin</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Acceso a páginas por rol</h3>
+<table>
+  <thead><tr><th>Página</th><th>Admin</th><th>Jefe</th><th>Operario</th></tr></thead>
+  <tbody>
+    <tr><td>/admin — Panel administración</td><td>✅</td><td>❌</td><td>❌</td></tr>
+    <tr><td>/seleccionar-operario</td><td>✅</td><td>✅</td><td>❌</td></tr>
+    <tr><td>/operario/:nombre (propios)</td><td>✅ todos</td><td>✅ asignados</td><td>✅ solo el suyo</td></tr>
+    <tr><td>/mis-registros</td><td>✅</td><td>✅ equipo</td><td>✅ propios</td></tr>
+    <tr><td>/informes</td><td>✅</td><td>✅</td><td>❌</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<!-- 4. NAVEGACIÓN -->
+<h2 id="s4">4. Navegación general</h2>
+<p>La barra de navegación aparece en todas las páginas autenticadas.</p>
+
+<table>
+  <thead><tr><th>Elemento</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Logo + nombre empresa</td><td>Configurable por el administrador en Configuración</td></tr>
+    <tr><td>Nombre · Rol</td><td>Muestra tu nombre de usuario y rol activo</td></tr>
+    <tr><td>Menú contextual</td><td>Varía según tu rol (ver tabla inferior)</td></tr>
+    <tr><td>Cerrar sesión</td><td>Cierra la sesión y limpia los datos de acceso</td></tr>
+  </tbody>
+</table>
+
+<h3>Menú de navegación por rol</h3>
+<table>
+  <thead><tr><th>Rol</th><th>Opciones del menú</th></tr></thead>
+  <tbody>
+    <tr><td>Administrador</td><td>Admin</td></tr>
+    <tr><td>Jefe</td><td>Operarios · Mis Registros · Informes</td></tr>
+    <tr><td>Operario</td><td>Mis KPIs · Mis Registros</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<!-- 5. MÓDULOS -->
+<div class="page-break"></div>
+<h2 id="s5">5. Módulos de registro del operario</h2>
+<p>El perfil de cada operario contiene 7 pestañas. Las pestañas 01–06 muestran registros del <strong>mes en curso</strong> y permiten añadir nuevos. La pestaña 07 es la hoja de KPI anual.</p>
+
+<div class="callout info">
+  <div class="callout-icon">👁</div>
+  <div><p><b>Vista de solo lectura:</b> Cuando un jefe accede a un operario de otro jefe, el formulario de entrada y el botón de eliminar están ocultos. Solo puede consultar los datos.</p></div>
+</div>
+
+<!-- M01 -->
+<div class="module-header" id="m01">
+  <span class="module-badge">01</span>
+  <span class="module-title">Incidencias</span>
+</div>
+<p>Registro de incidencias del operario con su puntuación asociada.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Fecha</td><td>Fecha</td><td>Fecha de la incidencia (por defecto hoy)</td></tr>
+    <tr><td>ID Incidencia</td><td>Número</td><td>Referencia interna (opcional)</td></tr>
+    <tr><td>OT</td><td>Número</td><td>Número de orden de trabajo (opcional)</td></tr>
+    <tr><td>Incidencia</td><td>Desplegable</td><td>Tipo de incidencia predefinido</td></tr>
+    <tr><td>Puntos</td><td>Número</td><td>Puntuación numérica de la incidencia</td></tr>
+    <tr><td>Observaciones</td><td>Texto</td><td>Comentarios adicionales (opcional)</td></tr>
+  </tbody>
+</table>
+
+<!-- M02 -->
+<div class="module-header" id="m02">
+  <span class="module-badge">02</span>
+  <span class="module-title">Control de Calidad</span>
+</div>
+<p>Registro de incidencias de calidad atendidas. El importe total se calcula automáticamente.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Fecha</td><td>Fecha</td><td>Fecha del registro</td></tr>
+    <tr><td>OT</td><td>Número</td><td>Orden de trabajo (opcional)</td></tr>
+    <tr><td>Cliente</td><td>Texto</td><td>Nombre del cliente</td></tr>
+    <tr><td>Tipo CQ</td><td>Desplegable</td><td>Tipo de control de calidad</td></tr>
+    <tr><td>Descripción</td><td>Texto</td><td>Descripción del problema</td></tr>
+    <tr><td>Resolución</td><td>Texto</td><td>Cómo se resolvió (opcional)</td></tr>
+    <tr><td>Marca</td><td>Texto</td><td>Marca del equipo (opcional)</td></tr>
+    <tr><td>Horas</td><td>Número</td><td>Horas dedicadas</td></tr>
+    <tr><td>Importe/h</td><td>Número</td><td>Coste por hora (€)</td></tr>
+    <tr><td>Materiales</td><td>Número</td><td>Coste de materiales (€)</td></tr>
+    <tr><td><strong>Total CQ</strong></td><td><em>Calculado</em></td><td>(Horas × Importe/h) + Materiales</td></tr>
+  </tbody>
+</table>
+
+<!-- M03 -->
+<div class="module-header" id="m03">
+  <span class="module-badge">03</span>
+  <span class="module-title">Visitas</span>
+</div>
+<p>Registro de visitas de inspección realizadas por el operario.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Fecha</td><td>Fecha</td><td>Fecha de la visita</td></tr>
+    <tr><td>Tipo Visita</td><td>Desplegable</td><td>Categoría de visita</td></tr>
+    <tr><td>Inspección</td><td>Texto</td><td>Descripción de lo inspeccionado</td></tr>
+    <tr><td>OT</td><td>Número</td><td>Orden de trabajo (opcional)</td></tr>
+    <tr><td>OK / KO</td><td>Botones</td><td>Estado del resultado de la visita</td></tr>
+    <tr><td>Cliente</td><td>Texto</td><td>Nombre del cliente (opcional)</td></tr>
+    <tr><td>Observaciones</td><td>Texto</td><td>Comentarios adicionales (opcional)</td></tr>
+  </tbody>
+</table>
+
+<!-- M04 -->
+<div class="page-break"></div>
+<div class="module-header" id="m04">
+  <span class="module-badge">04</span>
+  <span class="module-title">Limpieza</span>
+</div>
+<p>Registro de revisiones de limpieza, vestuario y seguridad del operario.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Fecha</td><td>Fecha del registro</td></tr>
+    <tr><td>Vestuario H</td><td>Puntuación de vestuario e higiene personal</td></tr>
+    <tr><td>Limpieza VH</td><td>Puntuación de limpieza del vehículo</td></tr>
+    <tr><td>Limpieza VH Sorpresa</td><td>Puntuación de inspección sorpresa del vehículo</td></tr>
+    <tr><td>Seguridad T</td><td>Puntuación de cumplimiento de seguridad</td></tr>
+    <tr><td>Herramientas</td><td>Puntuación del estado de herramientas</td></tr>
+    <tr><td>Observaciones</td><td>Texto libre (opcional)</td></tr>
+  </tbody>
+</table>
+
+<!-- M05 -->
+<div class="module-header" id="m05">
+  <span class="module-badge">05</span>
+  <span class="module-title">Horas Improductivas</span>
+</div>
+<p>Registro de horas dedicadas a tareas no directamente productivas y consumibles del mes.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Objetivo orientativo</th></tr></thead>
+  <tbody>
+    <tr><td>H. Recogida Material</td><td>Obj: 1,5 h</td></tr>
+    <tr><td>H. Reunión</td><td>Obj: 1 h</td></tr>
+    <tr><td>H. Mant. Furgonetas</td><td>Obj: 2 h/mes</td></tr>
+    <tr><td>H. Mant. Instalaciones</td><td>—</td></tr>
+    <tr><td>H. Formación</td><td>—</td></tr>
+    <tr><td>Consumibles €</td><td>—</td></tr>
+    <tr><td>Observaciones</td><td>Texto libre (opcional)</td></tr>
+  </tbody>
+</table>
+<p>El <strong>Total de horas</strong> (suma de todas las horas, excepto consumibles) se calcula y muestra en tiempo real antes de guardar.</p>
+
+<!-- M06 -->
+<div class="module-header" id="m06">
+  <span class="module-badge">06</span>
+  <span class="module-title">ISSUS</span>
+</div>
+<p>Registro del sistema de calidad: acciones de mejora, no conformidades y correctivas.</p>
+<table>
+  <thead><tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Fecha</td><td>Fecha</td><td>Fecha del registro</td></tr>
+    <tr><td>ID</td><td>Número</td><td>Número de referencia ISSUS (opcional)</td></tr>
+    <tr><td>Tipo</td><td>Desplegable</td><td>ACCION MEJORA / NO CONFORMIDAD / CORRECTIVA / INCIDENCIA</td></tr>
+    <tr><td>Estado</td><td>Botones</td><td>ABIERTA (verde) / CERRADA (rojo)</td></tr>
+    <tr><td>Descripción *</td><td>Texto</td><td>Descripción detallada (obligatorio)</td></tr>
+  </tbody>
+</table>
+
+<!-- M07 -->
+<div class="page-break"></div>
+<div class="module-header" id="m07">
+  <span class="module-badge">07</span>
+  <span class="module-title">KPI Mensual</span>
+</div>
+
+<div class="callout warning">
+  <div class="callout-icon">⚠️</div>
+  <div><p><b>Almacenamiento local:</b> Los datos del KPI Mensual se guardan en el <b>navegador local</b> (localStorage). Si accedes desde otro dispositivo o navegador, los datos no estarán disponibles. Usa siempre el mismo dispositivo.</p></div>
+</div>
+
+<p>La pestaña KPI Mensual replica la hoja de cálculo de incentivos. Contiene una tabla con los 12 meses del año. Cada fila es editable por el jefe o el propio operario (solo el mes actual).</p>
+
+<h4>Tabla principal — Secciones y columnas</h4>
+
+<p><span class="kpi-header kpi-prod">Productividad</span></p>
+<table>
+  <thead><tr><th>Campo</th><th>Edición</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>% Objetivo</td><td>Manual (80–120)</td><td>Porcentaje de productividad conseguido</td></tr>
+    <tr><td>Importe</td><td>Calculado</td><td>€ según tabla de referencia</td></tr>
+    <tr><td>Acumulado</td><td>Calculado</td><td>Suma acumulada hasta ese mes (referencia, no incluida en el TOTAL)</td></tr>
+  </tbody>
+</table>
+
+<p><span class="kpi-header kpi-cal">Calidad</span></p>
+<table>
+  <thead><tr><th>Subsección</th><th>Entrada</th><th>Lógica</th></tr></thead>
+  <tbody>
+    <tr><td>Control Documental</td><td>Puntos (−80 a 80)</td><td>Importe según tabla de puntos</td></tr>
+    <tr><td>Control Visitas</td><td>OK / KO</td><td>OK → +25 € · KO → −25 €</td></tr>
+    <tr><td>Retorno</td><td>% Retorno</td><td>%P − %R → importe por mismo umbral que Productividad</td></tr>
+  </tbody>
+</table>
+
+<p><span class="kpi-header kpi-ord">Orden, Limpieza y Seguridad</span></p>
+<table>
+  <thead><tr><th>Ítem</th><th>OK</th><th>KO</th></tr></thead>
+  <tbody>
+    <tr><td>Herramientas</td><td>+5 €</td><td>0 €</td></tr>
+    <tr><td>Vehículo</td><td>+10 €</td><td>0 €</td></tr>
+    <tr><td>Aseo personal</td><td>+10 €</td><td>0 €</td></tr>
+  </tbody>
+</table>
+
+<p><span class="kpi-header kpi-hi">Horas Improductivas</span></p>
+<div class="formula">
+Diferencia = H.Invertidas − H.Objetivo
+Penalización = MAX(Diferencia, 0) × 39 €/hora
+</div>
+
+<p><strong>TOTAL mensual</strong> = Control Documental + Visitas + Retorno + Herramientas + Vehículo + Aseo − Penalización</p>
+<p><em>Nota: La Productividad se muestra como referencia pero NO se suma al TOTAL.</em></p>
+
+<h4>Selector de año</h4>
+<p>Los botones ← → en la cabecera permiten navegar entre años. El mes actual se resalta en azul. Los meses anteriores son de solo lectura para el rol operario.</p>
+
+<h4>Resumen de Incentivos</h4>
+<p>Tabla debajo de la principal con:</p>
+<table>
+  <thead><tr><th>Columna</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Importe</td><td>TOTAL del mes (calculado arriba)</td></tr>
+    <tr><td>Acumulado</td><td>Suma progresiva del año</td></tr>
+    <tr><td>Imp. a Cobrar</td><td>MAX(Importe − KPI Referencia, 0)</td></tr>
+    <tr><td>Objetivo</td><td>Objetivo mensual a cobrar (editable, por defecto 250 €)</td></tr>
+    <tr><td>Dietas</td><td>Dietas del mes (editable)</td></tr>
+    <tr><td>H. Ext</td><td>Horas extra del mes (editable)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout success">
+  <div class="callout-icon">💾</div>
+  <div><p><b>Guardado automático:</b> Cada cambio en el KPI Mensual se guarda al instante en el navegador. No es necesario pulsar ningún botón de guardar.</p></div>
+</div>
+
+<hr>
+
+<!-- 6. MIS REGISTROS -->
+<h2 id="s6">6. Mis Registros</h2>
+<p>Accesible desde el menú de navegación para jefes y operarios. Muestra todos los registros del <strong>mes en curso</strong> de los módulos 01–06.</p>
+
+<h3>Filtros disponibles</h3>
+<table>
+  <thead><tr><th>Filtro</th><th>Disponible para</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Sección</td><td>Todos</td><td>Filtra por módulo o muestra todos</td></tr>
+    <tr><td>Operario</td><td>Jefe / Admin</td><td>Filtra por operario asignado</td></tr>
+  </tbody>
+</table>
+
+<h3>Estado de sincronización</h3>
+<p>Cada registro muestra su estado de sincronización con n8n:</p>
+<ul>
+  <li><span class="badge badge-green">✓ Sincronizado</span> — El webhook recibió el registro correctamente.</li>
+  <li><span class="badge badge-amber">⏳ Pendiente</span> — El envío falló y se reintentará al próximo inicio de sesión.</li>
+</ul>
+
+<hr>
+
+<!-- 7. INFORMES -->
+<div class="page-break"></div>
+<h2 id="s7">7. Informes (PDF)</h2>
+<p>Disponible para <strong>jefes y administradores</strong>. Permite generar un informe PDF del KPI mensual de un operario.</p>
+
+<h3>Pasos para generar un informe</h3>
+<ol class="steps">
+  <li>Selecciona el <strong>operario</strong> en el desplegable.</li>
+  <li>Selecciona el <strong>mes</strong> y el <strong>año</strong>.</li>
+  <li>Pulsa <strong>Vista previa</strong> para revisar el informe en pantalla.</li>
+  <li>Pulsa <strong>Descargar PDF</strong> para guardar el archivo.</li>
+</ol>
+
+<h3>Contenido del informe PDF</h3>
+<table>
+  <thead><tr><th>Sección</th><th>Origen de datos</th></tr></thead>
+  <tbody>
+    <tr><td>Cabecera (operario, mes, año)</td><td>Configuración</td></tr>
+    <tr><td>Tabla KPI Mensual completa</td><td>localStorage</td></tr>
+    <tr><td>Resumen de Incentivos</td><td>localStorage</td></tr>
+    <tr><td>Incidencias del mes</td><td>Supabase</td></tr>
+    <tr><td>Control de Calidad del mes</td><td>Supabase</td></tr>
+    <tr><td>Visitas del mes</td><td>Supabase</td></tr>
+    <tr><td>Limpieza del mes</td><td>Supabase</td></tr>
+    <tr><td>Horas Improductivas del mes</td><td>Supabase</td></tr>
+    <tr><td>ISSUS del mes</td><td>Supabase</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<!-- 8. ADMINISTRACIÓN -->
+<h2 id="s8">8. Panel de Administración</h2>
+<p>Solo accesible para el rol <strong>Administrador</strong>. Contiene 7 pestañas.</p>
+
+<!-- A1 Dashboard -->
+<h3 id="a1">Dashboard general</h3>
+<p>Vista consolidada de todos los módulos 01–06 de todos los operarios.</p>
+
+<h4>Filtros</h4>
+<ul>
+  <li>Selector de <strong>año</strong> con flechas ← →.</li>
+  <li>Selector de <strong>mes</strong> o "Año completo".</li>
+</ul>
+
+<h4>Tarjetas de resumen (siempre visibles)</h4>
+<table>
+  <thead><tr><th>Tarjeta</th><th>Qué muestra</th></tr></thead>
+  <tbody>
+    <tr><td>Incidencias</td><td>Total de registros y puntos acumulados del periodo</td></tr>
+    <tr><td>Registros CQ</td><td>Total de registros y coste total en €</td></tr>
+    <tr><td>Visitas OK</td><td>Porcentaje y ratio OK / total</td></tr>
+    <tr><td>ISSUS Abiertas</td><td>Cantidad de ISSUS abiertas y cerradas</td></tr>
+  </tbody>
+</table>
+
+<h4>Widgets por operario</h4>
+<table>
+  <thead><tr><th>Widget</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Incidencias por operario</td><td>Barras proporcionales al número de registros y puntos acumulados</td></tr>
+    <tr><td>Control de Calidad</td><td>Barras por coste total de cada operario</td></tr>
+    <tr><td>Visitas</td><td>Tabla con columnas OK, KO y % OK por operario</td></tr>
+    <tr><td>Horas Improductivas</td><td>Barras de horas y consumibles por operario</td></tr>
+    <tr><td>ISSUS por tipo</td><td>Distribución porcentual de los tipos de ISSUS</td></tr>
+    <tr><td>Limpieza</td><td>Recuento de registros por operario</td></tr>
+  </tbody>
+</table>
+
+<h4>Gestionar dashboard</h4>
+<p>Pulsa el botón <strong>"Gestionar dashboard"</strong> (esquina superior derecha) para:</p>
+<ol class="steps">
+  <li>Activar o desactivar cada widget predefinido con checkboxes.</li>
+  <li>Ver y eliminar KPIs personalizados existentes.</li>
+  <li>Crear un nuevo KPI: escribe un nombre, selecciona la tabla, la métrica (recuento o suma) y el color. Pulsa <strong>"Añadir KPI"</strong>.</li>
+</ol>
+<p>Las preferencias se guardan en el navegador (localStorage).</p>
+
+<!-- A2 KPI Global -->
+<div class="page-break"></div>
+<h3 id="a2">KPI Mensual — Vista global</h3>
+<p>Vista comparativa del KPI Mensual de todos los operarios activos. Los datos provienen del localStorage del mismo navegador.</p>
+
+<h4>Vista anual</h4>
+<p>Muestra 4 tarjetas resumen (Total equipo, A cobrar, % Objetivo medio, Top operario) y una tabla comparativa con:</p>
+<ul>
+  <li>Una fila por operario con acumulados anuales de cada categoría.</li>
+  <li>Clic en una fila → expande el <strong>desglose mensual completo</strong> del operario.</li>
+  <li>Fila final con los totales del equipo.</li>
+</ul>
+
+<h4>Vista mensual</h4>
+<p>Selecciona un mes para ver todos los valores de entrada y calculados de ese mes para cada operario: productividad, calidad, visitas, retorno, herramientas, vehículo, aseo, horas, penalización, total y a cobrar.</p>
+
+<!-- A3 Permisos -->
+<h3 id="a3">Permisos y Roles</h3>
+<p>Matriz de configuración de permisos por rol. Columnas: <strong>Jefe · Operario · Admin</strong> (siempre activado).</p>
+<table>
+  <thead><tr><th>Grupo</th><th>Permisos incluidos</th></tr></thead>
+  <tbody>
+    <tr><td>Acceso a datos</td><td>Ver datos del equipo · Editar datos de operarios · Ver solo datos propios</td></tr>
+    <tr><td>KPI</td><td>Rellenar KPI mes activo · Histórico solo lectura · Editar mes cerrado · Validar KPI mensual</td></tr>
+    <tr><td>Visualización</td><td>Ver incentivos del equipo · Dashboard global de KPIs</td></tr>
+    <tr><td>Exportación</td><td>Exportar informes</td></tr>
+    <tr><td>Configuración</td><td>Modificar tablas de referencia · Gestionar usuarios · Abrir/cerrar periodos · Configurar incentivos</td></tr>
+  </tbody>
+</table>
+<p>Pulsa <strong>Guardar cambios</strong> para persistir la configuración.</p>
+<div class="callout warning">
+  <div class="callout-icon">⚠️</div>
+  <div><p><b>Requiere migración:</b> Si aparece un aviso de migración en esta pestaña, ejecuta en Supabase SQL Editor: <code>ALTER TABLE config ADD COLUMN IF NOT EXISTS permisos_roles JSONB;</code></p></div>
+</div>
+
+<!-- A4 Operarios -->
+<h3 id="a4">Operarios</h3>
+<p>Gestión del catálogo de operarios (perfiles, no cuentas de acceso).</p>
+<table>
+  <thead><tr><th>Acción</th><th>Cómo</th></tr></thead>
+  <tbody>
+    <tr><td>Ver lista</td><td>Tabla con Nombre, Email y estado Activo/Inactivo</td></tr>
+    <tr><td>Añadir</td><td>Botón "Añadir" → formulario: Nombre, Email, checkbox Activo</td></tr>
+    <tr><td>Editar</td><td>Icono lápiz en la fila → mismo formulario con datos cargados</td></tr>
+  </tbody>
+</table>
+<div class="callout info">
+  <div class="callout-icon">ℹ️</div>
+  <div><p>Los operarios marcados como <b>Inactivo</b> no aparecen en los desplegables de asignación de jefes ni en la creación de usuarios, pero sus datos históricos se conservan.</p></div>
+</div>
+
+<!-- A5 Jefes -->
+<h3 id="a5">Jefes</h3>
+<p>Gestión de los supervisores y sus asignaciones de operarios.</p>
+<ol class="steps">
+  <li>Pulsa <strong>"Añadir"</strong> para crear un nuevo jefe.</li>
+  <li>Introduce el <strong>Nombre</strong> y un <strong>PIN de 4 dígitos</strong>.</li>
+  <li>Marca los checkboxes de los <strong>operarios asignados</strong> a ese jefe.</li>
+  <li>Pulsa <strong>Guardar</strong>.</li>
+</ol>
+<p>Para editar, pulsa el icono lápiz. El PIN se puede dejar en blanco para no cambiarlo.</p>
+
+<!-- A6 Usuarios -->
+<h3 id="a6">Usuarios Operario</h3>
+<p>Gestión de las cuentas de acceso con PIN para los operarios.</p>
+<table>
+  <thead><tr><th>Acción</th><th>Cómo</th></tr></thead>
+  <tbody>
+    <tr><td>Añadir</td><td>Desplegable con operarios activos + PIN de 4 dígitos (obligatorio)</td></tr>
+    <tr><td>Editar</td><td>Campo nombre libre + PIN opcional (vacío = no cambia)</td></tr>
+  </tbody>
+</table>
+<div class="callout info">
+  <div class="callout-icon">ℹ️</div>
+  <div><p>El nombre del usuario debe coincidir exactamente con el nombre en la tabla de Operarios para que el sistema muestre sus datos correctamente.</p></div>
+</div>
+
+<!-- A7 Configuración -->
+<h3 id="a7">Configuración</h3>
+<table>
+  <thead><tr><th>Campo</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>Nombre de la empresa</td><td>Aparece en la cabecera de todas las páginas</td></tr>
+    <tr><td>URL del logo</td><td>URL pública de una imagen (PNG/JPG). Aparece en la cabecera</td></tr>
+    <tr><td>Webhook URL (n8n)</td><td>Endpoint al que se envían los datos de los módulos 01–06 tras cada inserción</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<!-- 9. SINCRONIZACIÓN -->
+<div class="page-break"></div>
+<h2 id="s9">9. Sincronización con n8n</h2>
+<p>Los módulos 01–06 envían cada nuevo registro a un webhook de n8n automáticamente.</p>
+
+<h3>Flujo de sincronización</h3>
+<ol class="steps">
+  <li>El usuario guarda un registro en cualquier módulo (01–06).</li>
+  <li>La app inserta el registro en Supabase.</li>
+  <li>Inmediatamente envía el registro al webhook configurado en <strong>Administración › Configuración</strong>.</li>
+  <li>Si el envío falla, el registro se marca como <span class="badge badge-amber">sync_pending</span>.</li>
+  <li>Al iniciar sesión, la app reintenta automáticamente todos los registros pendientes.</li>
+</ol>
+
+<h3>Tablas sincronizadas</h3>
+<table>
+  <thead><tr><th>Módulo</th><th>Tabla en n8n</th></tr></thead>
+  <tbody>
+    <tr><td>01 Incidencias</td><td><code>01_DB_INCIDENCIAS</code></td></tr>
+    <tr><td>02 Control Calidad</td><td><code>02_CONTROL_CALIDAD</code></td></tr>
+    <tr><td>03 Visitas</td><td><code>03_VISITAS</code></td></tr>
+    <tr><td>04 Limpieza</td><td><code>04_LIMPIEZA</code></td></tr>
+    <tr><td>05 Horas Improductivas</td><td><code>05_HORAS_IMPROD</code></td></tr>
+    <tr><td>06 ISSUS</td><td><code>06_INCIDENCIAS_ISSUS</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout danger">
+  <div class="callout-icon">🚫</div>
+  <div><p><b>KPI Mensual (pestaña 07) NO se sincroniza</b> con n8n. Sus datos se almacenan exclusivamente en el navegador local del dispositivo.</p></div>
+</div>
+
+<hr>
+
+<!-- 10. FAQ -->
+<h2 id="s10">10. Preguntas frecuentes</h2>
+
+<div class="faq">
+  <div class="faq-q">¿Cómo recupero mi PIN?</div>
+  <div class="faq-a">Contacta con el administrador. Desde <em>Administración › Jefes</em> o <em>Administración › Usuarios Operario</em> puede editar tu usuario y establecer un nuevo PIN sin necesidad de conocer el anterior.</div>
+
+  <div class="faq-q">¿Puedo editar un registro ya guardado en los módulos 01–06?</div>
+  <div class="faq-a">Actualmente no hay edición directa. Para corregir un dato, elimina el registro incorrecto y crea uno nuevo con los datos correctos.</div>
+
+  <div class="faq-q">¿Por qué no veo los datos del KPI en otro dispositivo?</div>
+  <div class="faq-a">Los datos del KPI Mensual (pestaña 07) se guardan en el navegador local (localStorage). Si cambias de dispositivo o navegador, los datos no estarán disponibles. Usa siempre el mismo dispositivo para introducir y consultar el KPI.</div>
+
+  <div class="faq-q">¿Qué pasa si cierro el navegador sin guardar el KPI?</div>
+  <div class="faq-a">El KPI Mensual guarda automáticamente cada cambio al instante. No es necesario pulsar ningún botón de guardar.</div>
+
+  <div class="faq-q">No aparecen datos en el Dashboard del administrador para un periodo.</div>
+  <div class="faq-a">Comprueba que los operarios tienen registros en Supabase para el periodo seleccionado. El Dashboard lee los módulos 01–06 de Supabase, no el KPI (localStorage).</div>
+
+  <div class="faq-q">El jefe no puede editar los datos de un operario.</div>
+  <div class="faq-a">Comprueba en <em>Administración › Jefes</em> que el operario está asignado a ese jefe. Si aparece como "Vista de solo lectura", el operario no está en las asignaciones del jefe.</div>
+
+  <div class="faq-q">Los datos no se sincronizan con n8n.</div>
+  <div class="faq-a">Verifica que la URL del webhook está correctamente configurada en <em>Administración › Configuración</em>. En <em>Mis Registros</em> puedes ver qué registros tienen sincronización pendiente.</div>
+
+  <div class="faq-q">¿Cómo desactivo un operario que ya no trabaja?</div>
+  <div class="faq-a">En <em>Administración › Operarios</em>, edita el operario y desmarca el checkbox "Activo". Dejará de aparecer en los desplegables pero sus datos históricos se conservan.</div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+  // Auto-open print dialog if ?print=1 in URL
+  if (window.location.search.includes('print=1')) window.print();
+</script>
+</body>
+</html>
